@@ -32,31 +32,53 @@ RUN_INTERVAL_MINUTES: int = 5
 HEADLESS_MODE: bool = True
 
 
-def parse_and_log_results(full_results: str) -> None:
+def parse_ping_results(full_results: str) -> dict:
     """
-    Parses the full ping output to check for any packet loss and logs
-    the findings in a CSV format.
+    Parses the full ping output to check for any packet loss and returns
+    structured data.
+
+    Args:
+        full_results: The raw text output from the ping command
+
+    Returns:
+        A dictionary containing parsed ping results
     """
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    packet_loss_detected = "No"
-    loss_percentage = "0%"
-    rtt_stats = "N/A"
+    results = {
+        "packet_loss_detected": "No",
+        "loss_percentage": "0%",
+        "rtt_stats": "N/A",
+    }
 
     # Use a regular expression to find the packet loss percentage
     loss_match = re.search(r"(\d+)% packet loss", full_results)
     if loss_match:
-        loss_percentage = loss_match.group(0)  # e.g., "5% packet loss"
+        results["loss_percentage"] = loss_match.group(0)  # e.g., "5% packet loss"
         # Check if the numeric value of the loss is greater than 0
         if int(loss_match.group(1)) > 0:
-            packet_loss_detected = "Yes"
+            results["packet_loss_detected"] = "Yes"
 
     # Use a regular expression to find the round-trip time stats
     rtt_match = re.search(r"round-trip min/avg/max = ([\d./]+) ms", full_results)
     if rtt_match:
-        rtt_stats = rtt_match.group(1)
+        results["rtt_stats"] = rtt_match.group(1)
+
+    return results
+
+
+def log_results(ping_data: dict) -> None:
+    """
+    Logs the parsed ping results to a CSV file.
+
+    Args:
+        ping_data: A dictionary containing parsed ping results
+    """
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     # Create the condensed log entry
-    log_entry = f"{timestamp},{packet_loss_detected},{loss_percentage},{rtt_stats}\n"
+    log_entry = (
+        f"{timestamp},{ping_data['packet_loss_detected']},"
+        f"{ping_data['loss_percentage']},{ping_data['rtt_stats']}\n"
+    )
 
     # Create the log file with a header if it doesn't exist
     if not os.path.exists(LOG_FILE):
@@ -121,13 +143,15 @@ def run_gateway_ping_test() -> None:
         time.sleep(15)
 
         results_element = driver.find_element(By.ID, "progress")
-        results_text: str = results_element.get_attribute("value").strip()
+        results_text_value = results_element.get_attribute("value")
+        results_text: str = results_text_value.strip() if results_text_value else ""
 
         if not results_text:
             print("Warning: Results text is empty. The test might not have completed.")
         else:
             print("Ping test complete. Full results captured.")
-            parse_and_log_results(results_text)
+            parsed_data = parse_ping_results(results_text)
+            log_results(parsed_data)
 
     except Exception as e:
         print(f"An error occurred during the automation process: {e}")
