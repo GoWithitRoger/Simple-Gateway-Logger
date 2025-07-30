@@ -1,7 +1,8 @@
 # /// script
 # dependencies = [
 #   "schedule>=1.2.2,<2.0.0",
-#   "selenium>=4.18.0,<5.0.0"
+#   "selenium>=4.18.0,<5.0.0",
+#   "webdriver-manager>=4.0.2"
 # ]
 # ///
 
@@ -15,8 +16,6 @@ from datetime import datetime
 import schedule
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
-
-# Automatically manages chromedriver
 from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
@@ -87,10 +86,13 @@ def log_results(ping_data: dict) -> None:
                 "Timestamp,PacketLossDetected,LossPercentage,RTT (min/avg/max ms)\n"
             )
 
+    # Append the new entry to the log file
     with open(LOG_FILE, "a") as f:
         f.write(log_entry)
 
-    print(f"Ping analysis complete. Results appended to {LOG_FILE}.")
+    # Get the full, absolute path for the user
+    full_path = os.path.abspath(LOG_FILE)
+    print(f"Ping analysis complete. Results appended to: {full_path}")
 
 
 # --- Main Automation Function ---
@@ -150,14 +152,18 @@ def run_gateway_ping_test() -> None:
             print("Warning: Results text is empty. The test might not have completed.")
         else:
             print("Ping test complete. Full results captured.")
+            # Use the new, refactored functions
             parsed_data = parse_ping_results(results_text)
             log_results(parsed_data)
 
     except Exception as e:
         print(f"An error occurred during the automation process: {e}")
         if driver:
-            driver.save_screenshot("error_screenshot.png")
-            print("Saved screenshot to error_screenshot.png for debugging.")
+            # Create a unique screenshot name to avoid overwriting
+            error_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+            screenshot_file = f"error_screenshot_{error_time}.png"
+            driver.save_screenshot(screenshot_file)
+            print(f"Saved screenshot to {screenshot_file} for debugging.")
 
     finally:
         if driver:
@@ -167,12 +173,22 @@ def run_gateway_ping_test() -> None:
 
 # --- Scheduler ---
 if __name__ == "__main__":
+    # Run the test once immediately on start
     run_gateway_ping_test()
+
+    # Schedule the job to run at the specified interval
     schedule.every(RUN_INTERVAL_MINUTES).minutes.do(run_gateway_ping_test)
-    print(
-        f"Script scheduled to run every {RUN_INTERVAL_MINUTES} minutes. "
-        "Press Ctrl+C to exit."
-    )
+
+    # Inform the user about the next scheduled run
+    if schedule.jobs:
+        next_run_datetime = schedule.jobs[0].next_run
+        next_run_time = next_run_datetime.strftime("%Y-%m-%d %H:%M:%S")
+        print(f"\nInitial test complete. Next test is scheduled for: {next_run_time}")
+    else:
+        # This case should not happen with the current logic, but it's good practice
+        print("\nInitial test complete. No further tests are scheduled.")
+
+    print("Press Ctrl+C to exit.")
 
     while True:
         schedule.run_pending()
