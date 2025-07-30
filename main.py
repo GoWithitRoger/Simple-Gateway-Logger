@@ -56,7 +56,6 @@ def parse_and_log_results(full_results: str) -> None:
                 "Timestamp,PacketLossDetected,LossPercentage,RTT (min/avg/max ms)\n"
             )
 
-    # Append the new condensed entry
     with open(LOG_FILE, "a") as f:
         f.write(log_entry)
 
@@ -75,7 +74,10 @@ def run_gateway_ping_test() -> None:
     if HEADLESS_MODE:
         chrome_options.add_argument("--headless")
     chrome_options.add_argument("--window-size=1280,1024")
-    user_agent: str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
+    user_agent: str = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
+    )
     chrome_options.add_argument(f"user-agent={user_agent}")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
@@ -102,7 +104,6 @@ def run_gateway_ping_test() -> None:
         )
         driver.execute_script(f"arguments[0].value = '{PING_TARGET}';", target_input)
 
-        # **FIX**: Reverted to clicking the "Ping" button
         ping_button = driver.find_element(By.NAME, "Ping")
         driver.execute_script("arguments[0].click();", ping_button)
         print(f"Ping test started for {PING_TARGET}.")
@@ -136,7 +137,8 @@ if __name__ == "__main__":
     run_gateway_ping_test()
     schedule.every(RUN_INTERVAL_MINUTES).minutes.do(run_gateway_ping_test)
     print(
-        f"Script scheduled to run every {RUN_INTERVAL_MINUTES} minutes. Press Ctrl+C to exit."
+        f"Script scheduled to run every {RUN_INTERVAL_MINUTES} minutes. "
+        "Press Ctrl+C to exit."
     )
 
     while True:

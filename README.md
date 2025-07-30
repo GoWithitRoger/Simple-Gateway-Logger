@@ -1,13 +1,13 @@
-# Internet Quality Monitor
+# Simple Gateway Logger
 
-A Python script that automates logging into an AT&T gateway, running a ping test, and logging the results to track internet quality over time.
+This is a Python script that automates logging into an AT&T fiber gateway/modem, running a ping test, and logging the results to track internet quality. It's useful for sussing out ISP issues (with the ISP's connection to the home and gateway), as opposed subscriber issues inside the home (LAN - router, wifi access points, etc).
 
 ## Features
 
 - Uses Selenium to automate interaction with the gateway's web interface.
 - Runs in headless mode, so no browser window is required.
 - Schedules the test to run at a configurable interval.
-- Appends results to a local log file for historical analysis.
+- Appends results to a local log file.
 
 ## Setup and Installation
 
@@ -19,7 +19,7 @@ A Python script that automates logging into an AT&T gateway, running a ping test
 2.  **Clone the Repository**:
     ```bash
     git clone <repository-url>
-    cd internet-quality-monitor
+    cd simple-gateway-logger
     ```
 
 3.  **Create Virtual Environment and Install Dependencies**:
@@ -36,22 +36,28 @@ A Python script that automates logging into an AT&T gateway, running a ping test
     Open the `main.py` file and update the following configuration variables:
     *   `DEVICE_ACCESS_CODE`: **This is required.** Enter the Device Access Code found on the back of your AT&T gateway.
     *   `GATEWAY_URL`: The default is `http://192.168.1.254`. Change if your gateway's IP is different.
-    *   `PING_TARGET`: The IP address to ping. Defaults to Google's DNS (`8.8.8.8`).
-    *   `RUN_INTERVAL_MINUTES`: How often the script should run. Defaults to `10` minutes.
+    *   `PING_TARGET`: The IP address to ping. Defaults to Google.com.
+    *   `RUN_INTERVAL_MINUTES`: How often the script should run. Defaults to `5` minutes.
 
 ## Usage
 
 Once configured, you can run the script directly:
 
 ```bash
+uv run main.py
+```
+
+or
+
+```bash
 python main.py
 ```
 
-The script will run the ping test once immediately and then schedule subsequent runs based on your configuration. Press `Ctrl+C` to stop the script.
+The script will run the ping test once immediately, then perform subsequent runs based on your configuration. Press `Ctrl+C` to stop the script.
 
 ## Scraped Data
 
-The results of each ping test are appended to `ping_log.txt` in the project's root directory. Each entry includes a timestamp, the ping target, and the raw output from the gateway's diagnostic tool.
+The results of each ping test are appended to `ping_log.csv` in the project's root directory.
 
 ## Development Tools
 
