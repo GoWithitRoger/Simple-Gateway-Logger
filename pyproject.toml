@@ -1,5 +1,5 @@
 [project]
-name = "internet-quality-monitor"
+name = "simple-gateway-logger"
 version = "0.1.0"
 requires-python = ">=3.11"
 

@@ -1,85 +1,71 @@
 # Simple Gateway Logger
 
-This is a Python script that automates logging into an AT&T fiber gateway/modem, running a ping test, and logging the results to track internet quality. It's useful for sussing out ISP issues (with the ISP's connection to the home and gateway), as opposed subscriber issues inside the home (LAN - router, wifi access points, etc).
+This Python script automates running the ping testing capability of AT&T fiber gateway and logging the results to track internet quality. It's useful for sussing out ISP issues (with the ISP's connection to the home and gateway), as opposed to subscriber issues inside the home (a 3rd-party router, wifi access points, etc.).
 
 ## Features
+Uses Selenium to automate interaction with the gateway's web interface. [cite: main.py]
+Runs in headless mode, so no browser window is required. [cite: main.py]
+Schedules the test to run at a configurable interval. [cite: main.py]
+Appends results to a local log file. [cite: main.py]
+Usage and Setup
+This project offers two distinct paths: a simple one-step command for general use, and a more comprehensive setup for developers.
 
-- Uses Selenium to automate interaction with the gateway's web interface.
-- Runs in headless mode, so no browser window is required.
-- Schedules the test to run at a configurable interval.
-- Appends results to a local log file.
+## For General Use (Single-Step)
+If you just want to run the script, you only need Python and uv installed. There is no need to create or activate a virtual environment.
 
-## Setup and Installation
-
-1.  **Prerequisites**:
-    *   Python 3.11+
-    *   [uv](https://github.com/astral-sh/uv) (the Python package manager).
-    *   Google Chrome and the matching version of `chromedriver` installed and available in your system's PATH.
-
-2.  **Clone the Repository**:
-    ```bash
-    git clone <repository-url>
-    cd simple-gateway-logger
-    ```
-
-3.  **Create Virtual Environment and Install Dependencies**:
-    ```bash
-    # Create and activate the virtual environment
-    uv venv
-    source .venv/bin/activate  # On Windows use: .venv\Scripts\activate
-
-    # Install dependencies from pyproject.toml
-    uv sync
-    ```
-
-4.  **Configuration**:
-    Open the `main.py` file and update the following configuration variables:
-    *   `DEVICE_ACCESS_CODE`: **This is required.** Enter the Device Access Code found on the back of your AT&T gateway.
-    *   `GATEWAY_URL`: The default is `http://192.168.1.254`. Change if your gateway's IP is different.
-    *   `PING_TARGET`: The IP address to ping. Defaults to Google.com.
-    *   `RUN_INTERVAL_MINUTES`: How often the script should run. Defaults to `5` minutes.
-
-## Usage
-
-Once configured, you can run the script directly:
+Simply run the following command in your terminal:
 
 ```bash
 uv run main.py
 ```
 
-or
+`uv` will automatically read the required dependencies from the top of the `main.py` file, create a temporary environment, and run the script.
+
+## For Development
+
+If you want to modify the code or run development tools like `ruff`, set up a dedicated project environment.
+
+**1. Clone the Repository**
 
 ```bash
-python main.py
+git clone <repository-url>
+cd simple-gateway-logger
 ```
 
-The script will run the ping test once immediately, then perform subsequent runs based on your configuration. Press `Ctrl+C` to stop the script.
+2. Create and Activate the Virtual Environment
+This creates a persistent environment for the project.
 
-## Scraped Data
 
-The results of each ping test are appended to `ping_log.csv` in the project's root directory.
+```bash
+# Create the venv
+uv venv
 
-## Development Tools
+# Activate it
+source .venv/bin/activate  # On Windows use: .venv\Scripts\activate
+```
 
-This project uses `ruff` for linting/formatting and `ty` for type checking.
+3. Install All Dependencies
+This installs the core packages plus development tools into your activated environment.
 
-### Linting and Formatting
+```bash
+uv pip install -e ".[dev]"
+```
+
+4. Running Development Tools
+With the environment activated, you can now run the development tools; e.g.:
 
 ```bash
 # Format the code
-uv run ruff format .
+ruff format .
 
-# Check for linting errors and automatically fix them
-uv run ruff check . --fix
+# Check for linting errors and fix them
+ruff check . --fix
 ```
 
-### Type Checking
+## Configuration
+Before running the script (using either method), open the main.py file and update the following configuration variables:
 
-```bash
-# Run the type checker
-uv run ty check .
-```
-
-## License
-
-MIT
+- GATEWAY_URL: The address of the gateway; defaults to http://192.168.1.254.
+- DIAG_URL: The address of the gateway's diagnostics page; defaults to "http://192.168.1.254/cgi-bin/diag.ha"
+- PING_TARGET: The IP address to ping; defaults to google.com.
+- RUN_INTERVAL_MINUTES: How often the script should run; defaults to 5 minutes.

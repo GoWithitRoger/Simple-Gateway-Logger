@@ -1,3 +1,12 @@
+# /// script
+# dependencies = [
+#   "schedule>=1.2.2,<2.0.0",
+#   "selenium>=4.18.0,<5.0.0"
+# ]
+# ///
+
+# main.py
+
 import os
 import re
 import time
