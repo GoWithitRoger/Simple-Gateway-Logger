@@ -1,6 +1,6 @@
 # Simple Gateway Logger
 
-This Python script automates running the ping testing capability of AT&T fiber gateway and logging the results to track internet quality. It's useful for sussing out ISP issues (with the ISP's connection to the home and gateway), as opposed to subscriber issues inside the home (a 3rd-party router, wifi access points, etc.).
+This script automates running the ping testing capability of your AT&T fiber gateway and logging the results. It's useful for sussing out ISP issues (with the ISP's connection to the home and gateway), as opposed to subscriber issues inside the home (a 3rd-party router, wifi access points, etc.).
 
 ## Features
 Uses Selenium to automate interaction with the gateway's web interface. [cite: main.py]
