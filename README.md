@@ -76,3 +76,7 @@ Before running the script (using either method), open the main.py file and updat
 - DIAG_URL: The address of the gateway's diagnostics page; defaults to "http://192.168.1.254/cgi-bin/diag.ha"
 - PING_TARGET: The IP address to ping; defaults to google.com.
 - RUN_INTERVAL_MINUTES: How often the script should run; defaults to 5 minutes.
+
+
+## License
+This project is licensed under the MIT License - see the [LICENSE](LICENSE.md) file for details.

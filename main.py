@@ -66,14 +66,14 @@ def parse_ping_results(full_results: str) -> dict:
 
 def log_results(ping_data: dict) -> None:
     """
-    Logs the parsed ping results to a CSV file.
+    Logs the parsed ping results to a CSV file and prints a summary to the console.
 
     Args:
         ping_data: A dictionary containing parsed ping results
     """
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # Create the condensed log entry
+    # Create the condensed log entry for the CSV file
     log_entry = (
         f"{timestamp},{ping_data['packet_loss_detected']},"
         f"{ping_data['loss_percentage']},{ping_data['rtt_stats']}\n"
@@ -90,9 +90,16 @@ def log_results(ping_data: dict) -> None:
     with open(LOG_FILE, "a") as f:
         f.write(log_entry)
 
+    # --- NEW: Print a formatted summary to the terminal ---
+    print("\n--- Test Results ---")
+    print(f"  Packet Loss Detected: {ping_data['packet_loss_detected']}")
+    print(f"  Loss Percentage:      {ping_data['loss_percentage']}")
+    print(f"  RTT (min/avg/max):    {ping_data['rtt_stats']} ms")
+    print("--------------------")
+
     # Get the full, absolute path for the user
     full_path = os.path.abspath(LOG_FILE)
-    print(f"Ping analysis complete. Results appended to: {full_path}")
+    print(f"Results appended to: {full_path}")
 
 
 # --- Main Automation Function ---
@@ -151,7 +158,6 @@ def run_gateway_ping_test() -> None:
         if not results_text:
             print("Warning: Results text is empty. The test might not have completed.")
         else:
-            print("Ping test complete. Full results captured.")
             # Use the new, refactored functions
             parsed_data = parse_ping_results(results_text)
             log_results(parsed_data)
@@ -169,6 +175,8 @@ def run_gateway_ping_test() -> None:
         if driver:
             print("Closing WebDriver.")
             driver.quit()
+        # --- NEW: Add a separator for visual clarity between runs ---
+        print("\n" + "=" * 60 + "\n")
 
 
 # --- Scheduler ---
@@ -183,10 +191,10 @@ if __name__ == "__main__":
     if schedule.jobs:
         next_run_datetime = schedule.jobs[0].next_run
         next_run_time = next_run_datetime.strftime("%Y-%m-%d %H:%M:%S")
-        print(f"\nInitial test complete. Next test is scheduled for: {next_run_time}")
+        print(f"Next test is scheduled for: {next_run_time}")
     else:
         # This case should not happen with the current logic, but it's good practice
-        print("\nInitial test complete. No further tests are scheduled.")
+        print("Initial test complete. No further tests are scheduled.")
 
     print("Press Ctrl+C to exit.")
 
