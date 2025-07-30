@@ -45,6 +45,9 @@ ENV/
 .mypy_cache/
 .coverage
 htmlcov/
+*.xml
+*.png
+*.csv
 
 # OS generated files
 .DS_Store
