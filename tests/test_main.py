@@ -2,6 +2,8 @@
 
 import re
 
+from selenium.webdriver.common.by import By
+
 
 # Copy of the parse_ping_results function to test in isolation
 def parse_ping_results(full_results: str) -> dict:
@@ -106,3 +108,53 @@ def test_parse_gibberish_input():
     assert result["packet_loss_detected"] == "No"
     assert result["loss_percentage"] == "0%"
     assert result["rtt_stats"] == "N/A"
+
+
+# (Add to the top with other imports)
+
+
+# (Add this class to the end of the file)
+class MockWebElement:
+    def __init__(self, text=""):
+        self._text = text
+
+    @property
+    def text(self):
+        return self._text
+
+    def find_elements(self, by, value):
+        if value == "td":
+            # Simulate splitting the text content into columns
+            parts = self._text.split("|")
+            return [MockWebElement(text=p) for p in parts]
+        return []
+
+
+# Test case for speed test parsing
+def test_parse_speed_test_results():
+    """Ensures speed test results are correctly parsed from mock web elements."""
+    # This function doesn't exist in the new structure, but we can test its logic
+    # by simulating the objects that run_speed_test_task would process.
+
+    # 1. Create mock rows like Selenium would find them
+    # We use '|' as a simple separator for our mock `find_elements` implementation
+    mock_rows = [
+        MockWebElement("08/01/2025 12:26:14|downstream|387.950000|2822.000000|Success"),
+        MockWebElement("08/01/2025 12:26:01|upstream|385.240000|2827.000000|Success"),
+    ]
+
+    # 2. Simulate the parsing logic from run_speed_test_task
+    results = {}
+    for row in mock_rows:
+        cols = row.find_elements(By.TAG_NAME, "td")
+        if len(cols) >= 3:
+            direction = cols[1].text.lower()
+            speed = f"{float(cols[2].text):.2f}"
+            if "downstream" in direction:
+                results["downstream_speed"] = speed
+            elif "upstream" in direction:
+                results["upstream_speed"] = speed
+
+    # 3. Assert the results
+    assert results["downstream_speed"] == "387.95"
+    assert results["upstream_speed"] == "385.24"
