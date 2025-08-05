@@ -9,18 +9,16 @@
 
 # main.py
 
+# Standard library imports
 import getpass
 import os
 import re
 import time
 from datetime import datetime
 
-# Automatically loads variables from a .env file
-from dotenv import load_dotenv
-
-load_dotenv()
-
+# Third-party imports
 import schedule
+from dotenv import load_dotenv
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.chrome.options import Options
@@ -30,6 +28,9 @@ from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from webdriver_manager.chrome import ChromeDriverManager
+
+# Load environment variables
+load_dotenv()
 
 # --- Configuration ---
 GATEWAY_URL: str = "http://192.168.1.254"

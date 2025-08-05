@@ -1,3 +1,7 @@
+<p align="left">
+  <img src="./icon.svg" alt="Simple Gateway Logger" width="200">
+</p>
+
 # Simple Gateway Logger
 
 This script automates running the ping testing capability of your AT\&T fiber gateway and logging the results. It's useful for sussing out ISP issues (with the ISP's connection to the home and gateway), as opposed to subscriber issues inside the home (a 3rd-party router, wifi access points, etc.).
