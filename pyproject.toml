@@ -1,6 +1,6 @@
 [project]
 name = "simple-gateway-logger"
-version = "0.1.0"
+version = "0.2.0"
 requires-python = ">=3.11"
 
 # Define runtime dependencies
@@ -8,7 +8,7 @@ dependencies = [
     "schedule>=1.2.2,<2.0.0",
     "selenium>=4.18.0,<5.0.0",
     "webdriver-manager>=4.0.2",
-    "python-dotenv>=1.0.1",
+    "python-dotenv>=1.0.1"
 ]
 
 [dependency-groups]
@@ -28,5 +28,3 @@ select = ["E", "F", "I"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 10
-
-

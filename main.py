@@ -6,13 +6,15 @@
 #   "python-dotenv>=1.0.1"
 # ]
 # ///
-
 # main.py
 
 # Standard library imports
 import getpass
+import json
 import os
+import platform
 import re
+import subprocess
 import time
 from datetime import datetime
 
@@ -29,281 +31,371 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from webdriver_manager.chrome import ChromeDriverManager
 
+# Local application imports
+import config
+
 # Load environment variables
 load_dotenv()
 
-# --- Configuration ---
-GATEWAY_URL: str = "http://192.168.1.254"
-DIAG_URL: str = "http://192.168.1.254/cgi-bin/diag.ha"
-PING_TARGET: str = "google.com"
-LOG_FILE: str = "ping_log.csv"
-RUN_INTERVAL_MINUTES: int = 5
-HEADLESS_MODE: bool = True
-
-# --- Speed Test Configuration ---
-SPEED_TEST_URL: str = "http://192.168.1.254/cgi-bin/speed.ha"
-# Run speed test every N runs. Set to 2 for every other run. Set to 0 to disable.
-RUN_SPEED_TEST_INTERVAL: int = 1
-
 # --- Globals for state management ---
 run_counter: int = 0
-# The script will prompt for the code if this isn't set as an environment variable
 DEVICE_ACCESS_CODE: str = ""
 
 
 def get_access_code() -> str:
-    """
-    Gets the device access code from an environment variable or prompts the user.
-    If prompted, it saves the code to a .env file for future use.
-    """
+    """Gets the device access code from an environment variable or prompts the user."""
     code = os.environ.get("GATEWAY_ACCESS_CODE")
     if code:
         print("Device Access Code found in environment variable.")
         return code
-
     print("\n--- Device Access Code Required ---")
-    print("The Device Access Code was not found in your environment variables.")
-    print(
-        "To avoid this prompt, create a file named '.env' in the project root and add:"
-    )
-    print("GATEWAY_ACCESS_CODE='your_code_here'")
-    print("(The .env file is ignored by Git and will not be stored in the repository)")
-
-    # Use getpass for secure, non-echoed input
     entered_code = getpass.getpass("Please enter the Device Access Code: ")
-
-    # If the user entered a code, save it to a .env file for them
-    if entered_code and not os.path.exists(".env"):
-        try:
-            with open(".env", "w") as f:
-                f.write(f"GATEWAY_ACCESS_CODE='{entered_code}'\n")
-            print("✅ Saved Device Access Code to a new .env file for future runs.")
-        except IOError as e:
-            print(f"⚠️ Warning: Could not write to .env file: {e}")
-
     return entered_code
 
 
-def parse_ping_results(full_results: str) -> dict:
-    """
-    Parses the full ping output to check for any packet loss and returns
-    structured data.
-    """
+def parse_gateway_ping_results(full_results: str) -> dict:
+    """Parses the full ping output from the GATEWAY."""
     results = {
-        "packet_loss_detected": "No",
-        "loss_percentage": "0%",
-        "rtt_stats": "N/A",
+        "gateway_loss_percentage": "0%",
+        "gateway_rtt_stats": "N/A",
     }
     loss_match = re.search(r"(\d+)% packet loss", full_results)
     if loss_match:
-        results["loss_percentage"] = loss_match.group(0)
-        if int(loss_match.group(1)) > 0:
-            results["packet_loss_detected"] = "Yes"
-
+        results["gateway_loss_percentage"] = loss_match.group(0)
     rtt_match = re.search(r"round-trip min/avg/max = ([\d./]+) ms", full_results)
     if rtt_match:
-        results["rtt_stats"] = rtt_match.group(1)
-
+        results["gateway_rtt_stats"] = rtt_match.group(1)
     return results
 
 
-def log_results(ping_data: dict, speed_data: dict | None = None) -> None:
+def parse_local_ping_results(ping_output: str) -> dict:
+    """Parses the output from the OS's native ping command."""
+    results = {
+        "loss_percentage": "0%",
+        "rtt_stats": "N/A",
+    }
+    if platform.system() != "Windows":
+        loss_match = re.search(r"(\d+(?:\.\d+)?)% packet loss", ping_output)
+        if loss_match:
+            loss_percent_str = loss_match.group(1)
+            results["loss_percentage"] = f"{loss_percent_str}% packet loss"
+        rtt_match = re.search(
+            r"min/avg/max/(?:stddev|mdev)\s*=\s*([\d./]+)", ping_output
+        )
+        if rtt_match:
+            results["rtt_stats"] = rtt_match.group(1)
+    else:
+        loss_match = re.search(r"Lost = \d+ \((\d+)% loss\)", ping_output)
+        if loss_match:
+            loss_percent_str = loss_match.group(1)
+            results["loss_percentage"] = f"{loss_percent_str}% packet loss"
+        rtt_match = re.search(
+            r"Minimum = (\d+)ms, Maximum = (\d+)ms, Average = (\d+)ms", ping_output
+        )
+        if rtt_match:
+            results["rtt_stats"] = (
+                f"{rtt_match.group(1)}/{rtt_match.group(3)}/{rtt_match.group(2)}"
+            )
+    return results
+
+
+def log_results(all_data: dict) -> None:
     """
-    Logs parsed ping and speed test results to a CSV file and prints a summary.
+    Logs parsed results from all tests to a CSV file and prints a summary.
+    Ensures the header is written if the file is new or empty.
     """
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    data_points = {
+        "Gateway_LossPercentage": all_data.get("gateway_loss_percentage", "N/A"),
+        "Gateway_RTT_ms": all_data.get("gateway_rtt_stats", "N/A"),
+        "Gateway_Downstream_Mbps": all_data.get("downstream_speed", "N/A"),
+        "Gateway_Upstream_Mbps": all_data.get("upstream_speed", "N/A"),
+        "Local_WAN_LossPercentage": all_data.get("local_wan_loss_percentage", "N/A"),
+        "Local_WAN_RTT_ms": all_data.get("local_wan_rtt_stats", "N/A"),
+        "Local_GW_LossPercentage": all_data.get("local_gw_loss_percentage", "N/A"),
+        "Local_GW_RTT_ms": all_data.get("local_gw_rtt_stats", "N/A"),
+        "Local_Downstream_Mbps": all_data.get("local_downstream_speed", "N/A"),
+        "Local_Upstream_Mbps": all_data.get("local_upstream_speed", "N/A"),
+    }
+    header = "Timestamp," + ",".join(data_points.keys()) + "\n"
+    log_entry = timestamp + "," + ",".join(str(v) for v in data_points.values()) + "\n"
 
-    # Get speed data, defaulting to "N/A" if not provided
-    downstream = speed_data.get("downstream_speed", "N/A") if speed_data else "N/A"
-    upstream = speed_data.get("upstream_speed", "N/A") if speed_data else "N/A"
-
-    log_entry = (
-        f"{timestamp},{ping_data['packet_loss_detected']},"
-        f"{ping_data['loss_percentage']},{ping_data['rtt_stats']},"
-        f"{downstream},{upstream}\n"
+    # Determine if the header needs to be written.
+    # This is true if the file doesn't exist or if it's empty.
+    write_header = (
+        not os.path.exists(config.LOG_FILE) or os.path.getsize(config.LOG_FILE) == 0
     )
 
-    if not os.path.exists(LOG_FILE):
-        with open(LOG_FILE, "w") as f:
-            f.write(
-                "Timestamp,PacketLossDetected,LossPercentage,RTT (min/avg/max ms),"
-                "DownstreamSpeed (Mbps),UpstreamSpeed (Mbps)\n"
-            )
-
-    with open(LOG_FILE, "a") as f:
+    with open(config.LOG_FILE, "a") as f:
+        if write_header:
+            f.write(header)
         f.write(log_entry)
 
-    print("\n--- Test Results ---")
-    print(f"  Packet Loss Detected: {ping_data['packet_loss_detected']}")
-    print(f"  Loss Percentage:      {ping_data['loss_percentage']}")
-    print(f"  RTT (min/avg/max):    {ping_data['rtt_stats']} ms")
-    if speed_data:
-        print(f"  Downstream Speed:     {downstream} Mbps")
-        print(f"  Upstream Speed:       {upstream} Mbps")
-    print("--------------------")
-
-    full_path = os.path.abspath(LOG_FILE)
+    print("\n--- Gateway Test Results ---")
+    print(f"  RTT (WAN):            {data_points['Gateway_RTT_ms']} ms")
+    print(f"  Downstream Speed:     {data_points['Gateway_Downstream_Mbps']} Mbps")
+    print(f"  Upstream Speed:       {data_points['Gateway_Upstream_Mbps']} Mbps")
+    print("\n--- Local Machine Test Results ---")
+    print(f"  RTT (Local -> WAN):   {data_points['Local_WAN_RTT_ms']} ms")
+    print(f"  RTT (Local -> GW):    {data_points['Local_GW_RTT_ms']} ms")
+    print(f"  Downstream Speed:     {data_points['Local_Downstream_Mbps']} Mbps")
+    print(f"  Upstream Speed:       {data_points['Local_Upstream_Mbps']} Mbps")
+    print("------------------------------------")
+    full_path = os.path.abspath(config.LOG_FILE)
     print(f"Results appended to: {full_path}")
 
 
 def run_ping_test_task(driver: WebDriver) -> dict | None:
-    """
-    Runs the ping test on the gateway's diagnostics page.
-    """
-    print("Navigating to diagnostics page for ping test...")
-    driver.get(DIAG_URL)
-
-    target_input = WebDriverWait(driver, 20).until(
-        EC.visibility_of_element_located((By.ID, "webaddress"))
-    )
-    driver.execute_script(f"arguments[0].value = '{PING_TARGET}';", target_input)
-
-    ping_button = driver.find_element(By.NAME, "Ping")
-    driver.execute_script("arguments[0].click();", ping_button)
-    print(f"Ping test started for {PING_TARGET}.")
-
-    print("Waiting for ping results...")
-    time.sleep(15)
-
-    results_element = driver.find_element(By.ID, "progress")
-    results_text = (results_element.get_attribute("value") or "").strip()
-
-    if not results_text:
-        print("Warning: Ping results text is empty.")
+    """Runs the ping test on the gateway's diagnostics page and logs raw output."""
+    print("Navigating to gateway diagnostics page for ping test...")
+    driver.get(config.DIAG_URL)
+    try:
+        target_input = WebDriverWait(driver, 20).until(
+            EC.visibility_of_element_located((By.ID, "webaddress"))
+        )
+        driver.execute_script(
+            f"arguments[0].value = '{config.PING_TARGET}';", target_input
+        )
+        ping_button = driver.find_element(By.NAME, "Ping")
+        driver.execute_script("arguments[0].click();", ping_button)
+        print(f"Gateway ping test started for {config.PING_TARGET}.")
+        print("Waiting for gateway ping results...")
+        time.sleep(15)
+        results_element = driver.find_element(By.ID, "progress")
+        results_text = (results_element.get_attribute("value") or "").strip()
+        if results_text:
+            with open("gateway_raw_output.log", "a") as log_file:
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                log_file.write(f"--- Log entry from {timestamp} ---\n")
+                log_file.write(results_text + "\n\n")
+            print("Successfully retrieved and logged raw gateway ping results text.")
+        else:
+            print("Warning: Gateway ping results text is empty.")
+            return None
+        return parse_gateway_ping_results(results_text)
+    except Exception as e:
+        print(f"Error during gateway ping test: {e}")
+        error_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+        screenshot_file = f"error_screenshot_gateway_ping_{error_time}.png"
+        driver.save_screenshot(screenshot_file)
+        print(f"Saved screenshot to {screenshot_file} for debugging.")
         return None
-
-    return parse_ping_results(results_text)
 
 
 def run_speed_test_task(driver: WebDriver, access_code: str) -> dict | None:
-    """
-    NEW: Automates the gateway speed test, including login if required.
-    """
-    print("Navigating to speed test page...")
-    driver.get(SPEED_TEST_URL)
-
-    # Check if login is required by looking for the password field
+    """Automates the gateway speed test, including login if required."""
+    print("Navigating to gateway speed test page...")
+    driver.get(config.SPEED_TEST_URL)
     try:
-        password_input = WebDriverWait(driver, 5).until(
-            EC.visibility_of_element_located((By.ID, "password"))
+        try:
+            password_input = WebDriverWait(driver, 5).until(
+                EC.visibility_of_element_located((By.ID, "password"))
+            )
+            print("Device Access Code required. Attempting to log in...")
+            password_input.send_keys(access_code)
+            driver.find_element(By.NAME, "Continue").click()
+            time.sleep(2)
+        except TimeoutException:
+            print("Already logged in or no password required for gateway speed test.")
+        run_button = WebDriverWait(driver, 15).until(
+            EC.element_to_be_clickable((By.NAME, "run"))
         )
-        print("Device Access Code required. Attempting to log in...")
-        password_input.send_keys(access_code)
-        driver.find_element(By.NAME, "Continue").click()
-        # FIX: Add a short, static pause to resolve the race condition
-        # by allowing the page to fully stabilize after a login reload.
-        time.sleep(2)
-    except TimeoutException:
-        # This path is taken when already logged in (or no password is required)
-        # and does not have the same timing issue.
-        print("Already logged in or no password required.")
-
-    # Wait for the "Run Speed Test" button to be ready and click it
-    run_button = WebDriverWait(driver, 15).until(
-        EC.element_to_be_clickable((By.NAME, "run"))
-    )
-    run_button.click()
-    print("Speed test initiated. This will take up to 90 seconds...")
-
-    # Wait for the test to complete by waiting for the run button to be clickable again
-    WebDriverWait(driver, 90).until(EC.element_to_be_clickable((By.NAME, "run")))
-    print("Speed test complete. Parsing results...")
-
-    # Parse results from the table
-    results = {}
-    table = WebDriverWait(driver, 10).until(
-        EC.visibility_of_element_located((By.CSS_SELECTOR, "table.grid.table100"))
-    )
-    rows = table.find_elements(By.TAG_NAME, "tr")
-
-    # Iterate over all rows to find the latest downstream and upstream results
-    for row in rows:
-        cols = row.find_elements(By.TAG_NAME, "td")
-        if len(cols) >= 3:
-            direction = cols[1].text.lower()
-            try:
-                speed = f"{float(cols[2].text):.2f}"
-                if "downstream" in direction and "downstream_speed" not in results:
-                    results["downstream_speed"] = speed
-                elif "upstream" in direction and "upstream_speed" not in results:
-                    results["upstream_speed"] = speed
-            except (ValueError, IndexError):
-                # Ignore rows that don't parse correctly (like headers)
-                continue
-        # Stop once we have both results
-        if "downstream_speed" in results and "upstream_speed" in results:
-            break
-
-    if "downstream_speed" not in results or "upstream_speed" not in results:
-        print("Warning: Could not parse both downstream and upstream speeds.")
+        run_button.click()
+        print("Gateway speed test initiated. This will take up to 90 seconds...")
+        WebDriverWait(driver, 90).until(EC.element_to_be_clickable((By.NAME, "run")))
+        print("Gateway speed test complete. Parsing results...")
+        results = {}
+        table = WebDriverWait(driver, 10).until(
+            EC.visibility_of_element_located((By.CSS_SELECTOR, "table.grid.table100"))
+        )
+        rows = table.find_elements(By.TAG_NAME, "tr")
+        for row in rows:
+            cols = row.find_elements(By.TAG_NAME, "td")
+            if len(cols) >= 3:
+                direction = cols[1].text.lower()
+                try:
+                    speed = f"{float(cols[2].text):.2f}"
+                    if "downstream" in direction and "downstream_speed" not in results:
+                        results["downstream_speed"] = speed
+                    elif "upstream" in direction and "upstream_speed" not in results:
+                        results["upstream_speed"] = speed
+                except (ValueError, IndexError):
+                    continue
+            if "downstream_speed" in results and "upstream_speed" in results:
+                break
+        return results if results else None
+    except Exception as e:
+        print(f"Error during gateway speed test: {e}")
         return None
 
-    return results
+
+def run_local_ping_task(target: str) -> dict:
+    """Runs a ping test from the local OS to the specified target."""
+    print(f"Running local ping test to {target}...")
+    try:
+        param = "-c" if platform.system() != "Windows" else "-n"
+        command = ["ping", param, "4", target]
+        process = subprocess.run(command, capture_output=True, text=True, timeout=15)
+        if process.returncode == 0:
+            print(f"Local ping to {target} complete.")
+            return parse_local_ping_results(process.stdout)
+        else:
+            print(
+                f"Warning: Local ping test to {target} failed. Stderr: {process.stderr}"
+            )
+            return {}
+    except FileNotFoundError:
+        print(
+            "Error: 'ping' command not found. Please ensure it's in your system's PATH."
+        )
+        return {}
+    except Exception as e:
+        print(f"An error occurred during local ping test to {target}: {e}")
+        return {}
+
+
+def run_local_speed_test_task() -> dict | None:
+    """
+    Runs a speed test using the official Ookla Speedtest CLI, ensuring the
+    correct executable is called by using its absolute path.
+    """
+    print("Running local speed test using the official Ookla CLI...")
+
+    # Find the absolute path to the Homebrew-installed Ookla speedtest executable
+    ookla_path = None
+    # Standard paths for Homebrew on Intel and Apple Silicon Macs
+    possible_paths = ["/opt/homebrew/bin/speedtest", "/usr/local/bin/speedtest"]
+    for path in possible_paths:
+        if os.path.exists(path):
+            ookla_path = path
+            break
+
+    if not ookla_path:
+        print("\n---")
+        print("Error: Could not find the Ookla 'speedtest' executable.")
+        print(
+            "Please ensure it is installed via Homebrew and located in one of these "
+            "paths:"
+        )
+        print(f"  {', '.join(possible_paths)}")
+        print("Installation command: brew install speedtest")
+        print("---\n")
+        return None
+
+    try:
+        # Command uses the absolute path to the Ookla client with correct arguments
+        command = [ookla_path, "--accept-license", "--accept-gdpr", "--format=json"]
+
+        # Execute the command
+        process = subprocess.run(
+            command, capture_output=True, text=True, timeout=120, check=True
+        )
+
+        # Find the JSON part of the output, as the tool may print progress lines first
+        json_output = None
+        for line in process.stdout.splitlines():
+            if line.strip().startswith("{"):
+                json_output = line
+                break
+
+        if not json_output:
+            print("Error: Could not find JSON in the speedtest command output.")
+            print(f"--- Raw STDOUT ---\n{process.stdout}\n--------------------")
+            if process.stderr:
+                print(f"--- Raw STDERR ---\n{process.stderr}\n--------------------")
+            return None
+
+        results = json.loads(json_output)
+
+        # The 'bandwidth' value is in bytes per second. Convert to Mbps.
+        # (bytes/sec * 8 bits/byte) / 1,000,000 bits/Mbps = Mbps
+        download_speed = (
+            results.get("download", {}).get("bandwidth", 0) * 8
+        ) / 1_000_000
+        upload_speed = (results.get("upload", {}).get("bandwidth", 0) * 8) / 1_000_000
+
+        print("Local speed test complete.")
+
+        return {
+            "local_downstream_speed": f"{download_speed:.2f}",
+            "local_upstream_speed": f"{upload_speed:.2f}",
+        }
+
+    except subprocess.CalledProcessError as e:
+        print(f"Error: The 'speedtest' command failed with return code {e.returncode}.")
+        print(f"Stdout: {e.stdout}")
+        print(f"Stderr: {e.stderr}")
+        return None
+    except subprocess.TimeoutExpired:
+        print("Error: The speed test command timed out after 120 seconds.")
+        return None
+    except json.JSONDecodeError:
+        print("Error: Could not parse JSON output from the 'speedtest' command.")
+        if "process" in locals():
+            print(f"--- Raw STDOUT ---\n{process.stdout}\n--------------------")
+        return None
+    except Exception as e:
+        print(f"An unexpected error occurred during the local speed test: {e}")
+        return None
 
 
 def perform_checks() -> None:
-    """
-    Main automation function to set up WebDriver, run tests, and log results.
-    """
+    """Main automation function to run all configured tests and log results."""
     global run_counter, DEVICE_ACCESS_CODE
     run_counter += 1
-
+    master_results = {}
     print(
-        f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
+        f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
         f"Starting checks (Run #{run_counter})..."
     )
 
-    # Get access code on first run if needed for a speed test
-    should_run_speed_test = (
-        RUN_SPEED_TEST_INTERVAL > 0 and run_counter % RUN_SPEED_TEST_INTERVAL == 0
+    # --- Run Local Tests (No Browser Required) ---
+    if config.RUN_LOCAL_PING_TEST:
+        wan_ping_results = run_local_ping_task(config.PING_TARGET)
+        master_results.update(
+            {f"local_wan_{k}": v for k, v in wan_ping_results.items()}
+        )
+    if config.RUN_LOCAL_GATEWAY_PING_TEST:
+        gateway_ip = config.GATEWAY_URL.split("//")[-1].split("/")[0]
+        gw_ping_results = run_local_ping_task(gateway_ip)
+        master_results.update({f"local_gw_{k}": v for k, v in gw_ping_results.items()})
+    if config.RUN_LOCAL_SPEED_TEST:
+        local_speed_results = run_local_speed_test_task()
+        if local_speed_results:
+            master_results.update(local_speed_results)
+
+    # --- Run Gateway Tests (Selenium Required) ---
+    should_run_gateway_speed_test = (
+        config.RUN_GATEWAY_SPEED_TEST_INTERVAL > 0
+        and run_counter % config.RUN_GATEWAY_SPEED_TEST_INTERVAL == 0
     )
-    if should_run_speed_test and not DEVICE_ACCESS_CODE:
+    if should_run_gateway_speed_test and not DEVICE_ACCESS_CODE:
         DEVICE_ACCESS_CODE = get_access_code()
 
-    # --- Setup WebDriver ---
     chrome_options = Options()
-    if HEADLESS_MODE:
+    if config.HEADLESS_MODE:
         chrome_options.add_argument("--headless")
     chrome_options.add_argument("--window-size=1280,1024")
-    user_agent = (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
-    )
-    chrome_options.add_argument(f"user-agent={user_agent}")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     driver = None
-
     try:
-        print("Setting up WebDriver...")
+        print("Setting up WebDriver for gateway tests...")
         driver = webdriver.Chrome(
             service=ChromeService(ChromeDriverManager().install()),
             options=chrome_options,
         )
-        print("WebDriver setup complete.")
-
-        print(f"Performing initial visit to {GATEWAY_URL} to establish session...")
-        driver.get(GATEWAY_URL)
-        time.sleep(2)  # Allow time for any session cookies to be set
-
-        # --- Run Ping Test ---
-        ping_results = run_ping_test_task(driver)
-
-        # --- Conditionally Run Speed Test ---
-        speed_results = None
-        if should_run_speed_test:
-            speed_results = run_speed_test_task(driver, DEVICE_ACCESS_CODE)
-        else:
-            print("Skipping speed test for this interval.")
-
-        # --- Log Results ---
-        if ping_results:
-            log_results(ping_results, speed_results)
-        else:
-            print("Could not log results as ping test failed.")
-
+        driver.get(config.GATEWAY_URL)
+        time.sleep(2)
+        gateway_ping_results = run_ping_test_task(driver)
+        if gateway_ping_results:
+            master_results.update(gateway_ping_results)
+        if should_run_gateway_speed_test:
+            gateway_speed_results = run_speed_test_task(driver, DEVICE_ACCESS_CODE)
+            if gateway_speed_results:
+                master_results.update(gateway_speed_results)
     except Exception as e:
-        print(f"An error occurred during the automation process: {e}")
+        print(f"An error occurred during the gateway automation process: {e}")
         if driver:
             error_time = datetime.now().strftime("%Y%m%d_%H%M%S")
             screenshot_file = f"error_screenshot_{error_time}.png"
@@ -313,23 +405,21 @@ def perform_checks() -> None:
         if driver:
             print("Closing WebDriver.")
             driver.quit()
-        print("\n" + "=" * 60 + "\n")
+    log_results(master_results)
+    print("\n" + "=" * 60 + "\n")
 
 
 # --- Scheduler ---
 if __name__ == "__main__":
     perform_checks()
-    schedule.every(RUN_INTERVAL_MINUTES).minutes.do(perform_checks)
-
+    schedule.every(config.RUN_INTERVAL_MINUTES).minutes.do(perform_checks)
     if schedule.jobs:
         next_run_datetime = schedule.jobs[0].next_run
         print(
             "Next test is scheduled for: "
             f"{next_run_datetime.strftime('%Y-%m-%d %H:%M:%S')}"
         )
-
     print("Press Ctrl+C to exit.")
-
     while True:
         schedule.run_pending()
         time.sleep(1)
