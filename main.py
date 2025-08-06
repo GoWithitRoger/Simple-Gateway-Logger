@@ -15,6 +15,7 @@ import re
 import subprocess
 import time
 from datetime import datetime
+from typing import Dict, Optional
 
 # Third-party imports
 import schedule
@@ -50,7 +51,7 @@ def get_access_code() -> str:
     return entered_code
 
 
-def parse_gateway_ping_results(full_results: str) -> dict:
+def parse_gateway_ping_results(full_results: str) -> dict[str, str]:
     """Parses the full ping output from the GATEWAY."""
     results = {
         "gateway_loss_percentage": "0%",
@@ -65,7 +66,7 @@ def parse_gateway_ping_results(full_results: str) -> dict:
     return results
 
 
-def parse_local_ping_results(ping_output: str) -> dict:
+def parse_local_ping_results(ping_output: str) -> dict[str, str]:
     """Parses the output from the macOS/Unix native ping command."""
     results = {
         "loss_percentage": "0% packet loss",
@@ -81,7 +82,7 @@ def parse_local_ping_results(ping_output: str) -> dict:
     return results
 
 
-def log_results(all_data: dict) -> None:
+def log_results(all_data: dict[str, str | float | int]) -> None:
     """
     Logs parsed results from all tests to a CSV file and prints a summary.
     Ensures the header is written if the file is new or empty.
@@ -127,7 +128,7 @@ def log_results(all_data: dict) -> None:
     print(f"Results appended to: {full_path}")
 
 
-def run_ping_test_task(driver: WebDriver) -> dict | None:
+def run_ping_test_task(driver: WebDriver) -> Optional[Dict[str, str]]:
     """Runs the ping test on the gateway's diagnostics page and logs raw output."""
     print("Navigating to gateway diagnostics page for ping test...")
     driver.get(config.DIAG_URL)
@@ -164,7 +165,9 @@ def run_ping_test_task(driver: WebDriver) -> dict | None:
         return None
 
 
-def run_speed_test_task(driver: WebDriver, access_code: str) -> dict | None:
+def run_speed_test_task(
+    driver: WebDriver, access_code: str
+) -> Optional[Dict[str, str]]:
     """Automates the gateway speed test, including login if required."""
     print("Navigating to gateway speed test page...")
     driver.get(config.SPEED_TEST_URL)
@@ -186,7 +189,7 @@ def run_speed_test_task(driver: WebDriver, access_code: str) -> dict | None:
         print("Gateway speed test initiated. This will take up to 90 seconds...")
         WebDriverWait(driver, 90).until(EC.element_to_be_clickable((By.NAME, "run")))
         print("Gateway speed test complete. Parsing results...")
-        results = {}
+        results: Dict[str, str] = {}
         table = WebDriverWait(driver, 10).until(
             EC.visibility_of_element_located((By.CSS_SELECTOR, "table.grid.table100"))
         )
@@ -211,7 +214,7 @@ def run_speed_test_task(driver: WebDriver, access_code: str) -> dict | None:
         return None
 
 
-def run_local_ping_task(target: str) -> dict:
+def run_local_ping_task(target: str) -> Dict[str, str]:
     """Runs a ping test from the local OS to the specified target."""
     print(f"Running local ping test to {target}...")
     try:
@@ -235,7 +238,7 @@ def run_local_ping_task(target: str) -> dict:
         return {}
 
 
-def run_local_speed_test_task() -> dict | None:
+def run_local_speed_test_task() -> Optional[Dict[str, str]]:
     """
     Runs a speed test using the official Ookla Speedtest CLI, ensuring the
     correct executable is called by using its absolute path.
@@ -359,13 +362,13 @@ def perform_checks() -> None:
     chrome_options.add_argument("--window-size=1280,1024")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
-    
+
     driver = None
-    service = ChromeService() # Use Selenium Manager to handle the driver
+    service = ChromeService()  # Use Selenium Manager to handle the driver
     try:
         print("Setting up WebDriver for gateway tests...")
         driver = webdriver.Chrome(
-            service=service, # Use the predefined service object
+            service=service,  # Use the predefined service object
             options=chrome_options,
         )
         driver.get(config.GATEWAY_URL)

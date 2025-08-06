@@ -70,7 +70,7 @@ EMPTY_OUTPUT = ""
 GIBBERISH_OUTPUT = "This is not the output you are looking for."
 
 
-def test_parse_successful_ping():
+def test_parse_successful_ping() -> None:
     """Ensures correct parsing for a standard, successful ping."""
     result = parse_ping_results(SUCCESS_OUTPUT)
     assert result["packet_loss_detected"] == "No"
@@ -78,7 +78,7 @@ def test_parse_successful_ping():
     assert result["rtt_stats"] == "2.463/2.610/2.834"
 
 
-def test_parse_with_packet_loss():
+def test_parse_with_packet_loss() -> None:
     """Ensures packet loss is correctly identified."""
     result = parse_ping_results(PACKET_LOSS_OUTPUT)
     assert result["packet_loss_detected"] == "Yes"
@@ -86,7 +86,7 @@ def test_parse_with_packet_loss():
     assert result["rtt_stats"] == "10.1/15.2/20.3"
 
 
-def test_parse_missing_rtt_stats():
+def test_parse_missing_rtt_stats() -> None:
     """Ensures parser gracefully handles missing RTT statistics."""
     result = parse_ping_results(MISSING_RTT_OUTPUT)
     assert result["packet_loss_detected"] == "No"
@@ -94,7 +94,7 @@ def test_parse_missing_rtt_stats():
     assert result["rtt_stats"] == "N/A"  # Should fall back to default
 
 
-def test_parse_empty_input():
+def test_parse_empty_input() -> None:
     """Ensures parser handles an empty string without crashing."""
     result = parse_ping_results(EMPTY_OUTPUT)
     assert result["packet_loss_detected"] == "No"
@@ -102,7 +102,7 @@ def test_parse_empty_input():
     assert result["rtt_stats"] == "N/A"
 
 
-def test_parse_gibberish_input():
+def test_parse_gibberish_input() -> None:
     """Ensures parser handles unrelated text without crashing."""
     result = parse_ping_results(GIBBERISH_OUTPUT)
     assert result["packet_loss_detected"] == "No"
@@ -131,7 +131,7 @@ class MockWebElement:
 
 
 # Test case for speed test parsing
-def test_parse_speed_test_results():
+def test_parse_speed_test_results() -> None:
     """Ensures speed test results are correctly parsed from mock web elements."""
     # This function doesn't exist in the new structure, but we can test its logic
     # by simulating the objects that run_speed_test_task would process.
