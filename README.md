@@ -6,6 +6,7 @@ This script automates running diagnostic network tests from your AT&T fiber gate
 
 By comparing gateway-to-WAN tests against local-machine-to-WAN tests, you can better distinguish between potential ISP issues and local network problems (e.g., Wi-Fi interference, router performance).
 
+
 ## Features
 
 - Uses Selenium to automate interaction with the gateway's web interface.
@@ -18,8 +19,10 @@ By comparing gateway-to-WAN tests against local-machine-to-WAN tests, you can be
 - Appends combined results to a single, local CSV log file, creating headers if the file is new or empty.
 - All configuration is organized in the `config.py` file.
 
+
 ## Prerequisites
-Before running the script, you must install the official Ookla Speedtest CLI.
+- Designed to run on MacOS.
+- Before running the script, you must install the official Ookla Speedtest CLI.
 
 ### macOS (via Homebrew)
 

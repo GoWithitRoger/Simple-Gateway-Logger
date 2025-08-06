@@ -12,7 +12,6 @@
 import getpass
 import json
 import os
-import platform
 import re
 import subprocess
 import time
@@ -69,33 +68,18 @@ def parse_gateway_ping_results(full_results: str) -> dict:
 
 
 def parse_local_ping_results(ping_output: str) -> dict:
-    """Parses the output from the OS's native ping command."""
+    """Parses the output from the macOS/Unix native ping command."""
     results = {
-        "loss_percentage": "0%",
+        "loss_percentage": "0% packet loss",
         "rtt_stats": "N/A",
     }
-    if platform.system() != "Windows":
-        loss_match = re.search(r"(\d+(?:\.\d+)?)% packet loss", ping_output)
-        if loss_match:
-            loss_percent_str = loss_match.group(1)
-            results["loss_percentage"] = f"{loss_percent_str}% packet loss"
-        rtt_match = re.search(
-            r"min/avg/max/(?:stddev|mdev)\s*=\s*([\d./]+)", ping_output
-        )
-        if rtt_match:
-            results["rtt_stats"] = rtt_match.group(1)
-    else:
-        loss_match = re.search(r"Lost = \d+ \((\d+)% loss\)", ping_output)
-        if loss_match:
-            loss_percent_str = loss_match.group(1)
-            results["loss_percentage"] = f"{loss_percent_str}% packet loss"
-        rtt_match = re.search(
-            r"Minimum = (\d+)ms, Maximum = (\d+)ms, Average = (\d+)ms", ping_output
-        )
-        if rtt_match:
-            results["rtt_stats"] = (
-                f"{rtt_match.group(1)}/{rtt_match.group(3)}/{rtt_match.group(2)}"
-            )
+    loss_match = re.search(r"(\d+(?:\.\d+)?)% packet loss", ping_output)
+    if loss_match:
+        loss_percent_str = loss_match.group(1)
+        results["loss_percentage"] = f"{loss_percent_str}% packet loss"
+    rtt_match = re.search(r"min/avg/max/(?:stddev|mdev)\s*=\s*([\d./]+)", ping_output)
+    if rtt_match:
+        results["rtt_stats"] = rtt_match.group(1)
     return results
 
 
@@ -233,8 +217,7 @@ def run_local_ping_task(target: str) -> dict:
     """Runs a ping test from the local OS to the specified target."""
     print(f"Running local ping test to {target}...")
     try:
-        param = "-c" if platform.system() != "Windows" else "-n"
-        command = ["ping", param, "4", target]
+        command = ["ping", "-c", "4", target]
         process = subprocess.run(command, capture_output=True, text=True, timeout=15)
         if process.returncode == 0:
             print(f"Local ping to {target} complete.")

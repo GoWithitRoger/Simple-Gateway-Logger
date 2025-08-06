@@ -19,7 +19,7 @@ def parse_ping_results(full_results: str) -> dict:
     """
     results = {
         "packet_loss_detected": "No",
-        "loss_percentage": "0%",
+        "loss_percentage": "0% packet loss",
         "rtt_stats": "N/A",
     }
 
@@ -98,7 +98,7 @@ def test_parse_empty_input():
     """Ensures parser handles an empty string without crashing."""
     result = parse_ping_results(EMPTY_OUTPUT)
     assert result["packet_loss_detected"] == "No"
-    assert result["loss_percentage"] == "0%"
+    assert result["loss_percentage"] == "0% packet loss"
     assert result["rtt_stats"] == "N/A"
 
 
@@ -106,7 +106,7 @@ def test_parse_gibberish_input():
     """Ensures parser handles unrelated text without crashing."""
     result = parse_ping_results(GIBBERISH_OUTPUT)
     assert result["packet_loss_detected"] == "No"
-    assert result["loss_percentage"] == "0%"
+    assert result["loss_percentage"] == "0% packet loss"
     assert result["rtt_stats"] == "N/A"
 
 
