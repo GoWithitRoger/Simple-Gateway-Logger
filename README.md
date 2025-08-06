@@ -21,11 +21,10 @@ By comparing gateway-to-WAN tests against local-machine-to-WAN tests, you can be
 
 
 ## Prerequisites
-- Designed to run on MacOS.
+- Designed to run on MacOS with Homebrew package manager installed.
 - Before running the script, you must install the official Ookla Speedtest CLI.
 
 ### macOS (via Homebrew)
-
 If you don't have Homebrew, [install it first](https://brew.sh/). Then, run the following command in your terminal:
 
   ```bash
