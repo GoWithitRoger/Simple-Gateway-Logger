@@ -24,7 +24,7 @@ By comparing gateway-to-WAN tests against local-machine-to-WAN tests, you can be
 - Designed to run on MacOS with Homebrew package manager installed.
 - Before running the script, you must install the official Ookla Speedtest CLI.
 
-### macOS (via Homebrew)
+### Installing Ookla Speedtest CLI on macOS (via Homebrew)
 If you don't have Homebrew, [install it first](https://brew.sh/). Then, run the following command in your terminal:
 
   ```bash
@@ -32,7 +32,7 @@ If you don't have Homebrew, [install it first](https://brew.sh/). Then, run the 
   ```
 
 ## Usage and Setup
-Simply run the following command in your terminal:
+Simply run the following command in a terminal window:
 
   ```bash 
       uv run main.py
@@ -40,7 +40,7 @@ Simply run the following command in your terminal:
   `uv` will automatically read the required dependencies from the top of the `main.py` file, create a temporary environment, and run the script.
     
 ## Configuration
-All configuration has been moved to the **`config.py`** file for easy editing. Open this file to adjust any settings.
+All configuration has been moved to the **`config.py`** file for easy editing.
 
 ### General Configuration
 

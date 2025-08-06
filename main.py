@@ -2,7 +2,6 @@
 # dependencies = [
 #   "schedule>=1.2.2,<2.0.0",
 #   "selenium>=4.18.0,<5.0.0",
-#   "webdriver-manager>=4.0.2",
 #   "python-dotenv>=1.0.1"
 # ]
 # ///
@@ -28,7 +27,6 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
-from webdriver_manager.chrome import ChromeDriverManager
 
 # Local application imports
 import config
@@ -361,11 +359,13 @@ def perform_checks() -> None:
     chrome_options.add_argument("--window-size=1280,1024")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
+    
     driver = None
+    service = ChromeService() # Use Selenium Manager to handle the driver
     try:
         print("Setting up WebDriver for gateway tests...")
         driver = webdriver.Chrome(
-            service=ChromeService(ChromeDriverManager().install()),
+            service=service, # Use the predefined service object
             options=chrome_options,
         )
         driver.get(config.GATEWAY_URL)
@@ -386,8 +386,16 @@ def perform_checks() -> None:
             print(f"Saved screenshot to {screenshot_file} for debugging.")
     finally:
         if driver:
-            print("Closing WebDriver.")
+            print("Closing WebDriver...")
             driver.quit()
+        # NEW: Add a more aggressive cleanup to prevent zombie processes
+        if service and service.process:
+            print("Ensuring chromedriver service is terminated...")
+            try:
+                service.process.kill()
+            except Exception as e:
+                print(f"Error while trying to kill service process: {e}")
+
     log_results(master_results)
     print("\n" + "=" * 60 + "\n")
 
