@@ -87,7 +87,6 @@ If you want to create the `.env` file manually, follow these steps:
 ## Advanced Configuration
 
 ### Getting Wi-Fi Details (macOS only)
-
 Optional: to capture detailed Wi-Fi metrics like signal strength (RSSI), noise level, channel, and band, the script uses the built-in `wdutil` command-line tool. However, `wdutil` requires `sudo` (administrator) privileges to run.
 
 To allow the script to run `wdutil` without asking for a password every time, you need to add a custom rule to the `sudoers` file.
@@ -116,6 +115,7 @@ To allow the script to run `wdutil` without asking for a password every time, yo
 If you make a mistake, `visudo` will warn you. In that case, type `e` and press `Enter` to re-edit the file and fix the error.
 
 Once this is done, the script will be able to gather and log Wi-Fi details automatically.
+
 
 ## License
 This project is licensed under the MIT License.
