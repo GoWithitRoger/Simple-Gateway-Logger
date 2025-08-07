@@ -17,7 +17,7 @@ By comparing gateway-to-WAN tests against local-machine-to-WAN tests, you can be
 - Runs in headless mode, so no browser window is required.
 - Schedules tests to run at a configurable interval.
 - Appends combined results to a single, local CSV log file, creating headers if the file is new or empty.
-- Captures detailed Wi-Fi metrics on macOS (Signal, Noise, Channel, etc.).
+- Captures detailed Wi-Fi metrics on macOS (signal, noise, channel, etc.) - see the [Advanced Configuration](#advanced-configuration) section for details.
 - All configuration is organized in the `config.py` file.
 
 
@@ -29,7 +29,7 @@ By comparing gateway-to-WAN tests against local-machine-to-WAN tests, you can be
 If you don't have Homebrew, [install it first](https://brew.sh/). Then, run the following command in your terminal:
 
   ```bash
-    brew install speedtest
+      brew install speedtest
   ```
 
 ## Usage and Setup
@@ -40,8 +40,10 @@ Simply run the following command in a terminal window:
   ```
   `uv` will automatically read the required dependencies from the top of the `main.py` file, create a temporary environment, and run the script.
     
+
 ## Configuration
 All configuration has been moved to the **`config.py`** file for easy editing.
+
 
 ### General Configuration
 
@@ -50,12 +52,14 @@ All configuration has been moved to the **`config.py`** file for easy editing.
 - `RUN_INTERVAL_MINUTES`: How often the script should run.
 - `HEADLESS_MODE`: Set to `True` to run the browser invisibly in the background.
 
+
 ### Gateway Test Configuration
 
 - `GATEWAY_URL`: The address of the fiber gateway (e.g., `http://192.168.1.254`).
 - `DIAG_URL`: The address of the gateway's diagnostics page.
 - `SPEED_TEST_URL`: The address of the gateway's speed test page.
 - `RUN_GATEWAY_SPEED_TEST_INTERVAL`: How often the gateway speed test runs. For example, a value of `2` means the speed test will run every other time the main checks run. Set to `0` to disable.
+
 
 ### Local Test Configuration
 
@@ -84,7 +88,7 @@ If you want to create the `.env` file manually, follow these steps:
 
 ### Getting Wi-Fi Details (macOS only)
 
-To capture detailed Wi-Fi metrics like signal strength (RSSI), noise level, channel, and band, the script uses the built-in `wdutil` command-line tool. However, `wdutil` requires `sudo` (administrator) privileges to run.
+Optional: to capture detailed Wi-Fi metrics like signal strength (RSSI), noise level, channel, and band, the script uses the built-in `wdutil` command-line tool. However, `wdutil` requires `sudo` (administrator) privileges to run.
 
 To allow the script to run `wdutil` without asking for a password every time, you need to add a custom rule to the `sudoers` file.
 
