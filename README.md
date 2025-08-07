@@ -17,6 +17,7 @@ By comparing gateway-to-WAN tests against local-machine-to-WAN tests, you can be
 - Runs in headless mode, so no browser window is required.
 - Schedules tests to run at a configurable interval.
 - Appends combined results to a single, local CSV log file, creating headers if the file is new or empty.
+- Captures detailed Wi-Fi metrics on macOS (Signal, Noise, Channel, etc.).
 - All configuration is organized in the `config.py` file.
 
 
@@ -78,6 +79,39 @@ If you want to create the `.env` file manually, follow these steps:
 
 3. The script will automatically detect and use this code.
 
+
+## Advanced Configuration
+
+### Getting Wi-Fi Details (macOS only)
+
+To capture detailed Wi-Fi metrics like signal strength (RSSI), noise level, channel, and band, the script uses the built-in `wdutil` command-line tool. However, `wdutil` requires `sudo` (administrator) privileges to run.
+
+To allow the script to run `wdutil` without asking for a password every time, you need to add a custom rule to the `sudoers` file.
+
+**Follow these steps carefully:**
+
+1.  **Open the sudoers file for editing:**
+    Open the Terminal app and run the following command. You will be prompted to enter your macOS user password.
+    ```bash
+    sudo visudo
+    ```
+2.  **Edit the file:**
+    This will open the `sudoers` file in the `vim` text editor. Don't be intimidated!
+    - Use the arrow keys to scroll to the very bottom of the file.
+    - Press the `o` key to start "insert mode" on a new line.
+3.  **Add the new rule:**
+    Carefully type or paste the following line. **Replace `your_username` with your actual macOS username** (the one you use to log in).
+    ```
+    your_username ALL=(ALL) NOPASSWD: /usr/bin/wdutil
+    ```
+    *To find your username, you can open a new terminal window and type `whoami`.*
+4.  **Save and exit:**
+    - Press the `Escape` key to exit insert mode.
+    - Type `:wq` and press `Enter` to save the file and quit `vim`.
+
+If you make a mistake, `visudo` will warn you. In that case, type `e` and press `Enter` to re-edit the file and fix the error.
+
+Once this is done, the script will be able to gather and log Wi-Fi details automatically.
 
 ## License
 This project is licensed under the MIT License.
