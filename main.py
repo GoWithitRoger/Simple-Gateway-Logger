@@ -67,18 +67,38 @@ def parse_gateway_ping_results(full_results: str) -> dict[str, str]:
 
 
 def parse_local_ping_results(ping_output: str) -> dict[str, str]:
-    """Parses the output from the macOS/Unix native ping command."""
-    results = {
+    """Parses the output from the macOS/Unix native ping command.
+
+    Args:
+        ping_output: The raw string output from the ping command.
+
+    Returns:
+        A dictionary containing parsed metrics including packet loss percentage,
+        round-trip time statistics, and the standard deviation of ping times.
+    """
+    results: dict[str, str] = {
         "loss_percentage": "0% packet loss",
         "rtt_stats": "N/A",
+        "ping_stddev": "N/A",
     }
     loss_match = re.search(r"(\d+(?:\.\d+)?)% packet loss", ping_output)
     if loss_match:
         loss_percent_str = loss_match.group(1)
         results["loss_percentage"] = f"{loss_percent_str}% packet loss"
-    rtt_match = re.search(r"min/avg/max/(?:stddev|mdev)\s*=\s*([\d./]+)", ping_output)
+
+    # Use a more flexible regex to find the line, then safely parse its parts
+    rtt_match = re.search(
+        r"min/avg/max/(?:stddev|mdev)\s*=\s*([\d./]+)\s*ms", ping_output
+    )
     if rtt_match:
-        results["rtt_stats"] = rtt_match.group(1)
+        parts = rtt_match.group(1).split("/")
+        if len(parts) == 4:
+            results["rtt_stats"] = f"{parts[0]}/{parts[1]}/{parts[2]}"
+            results["ping_stddev"] = parts[3]
+        else:
+            # Fallback for cases where stddev might be missing
+            results["rtt_stats"] = rtt_match.group(1)
+
     return results
 
 
@@ -95,16 +115,22 @@ def log_results(all_data: dict[str, str | float | int]) -> None:
         "Gateway_Upstream_Mbps": all_data.get("upstream_speed", "N/A"),
         "Local_WAN_LossPercentage": all_data.get("local_wan_loss_percentage", "N/A"),
         "Local_WAN_RTT_ms": all_data.get("local_wan_rtt_stats", "N/A"),
+        "Local_WAN_Ping_StdDev": all_data.get("local_wan_ping_stddev", "N/A"),
         "Local_GW_LossPercentage": all_data.get("local_gw_loss_percentage", "N/A"),
         "Local_GW_RTT_ms": all_data.get("local_gw_rtt_stats", "N/A"),
+        "Local_GW_Ping_StdDev": all_data.get("local_gw_ping_stddev", "N/A"),
         "Local_Downstream_Mbps": all_data.get("local_downstream_speed", "N/A"),
         "Local_Upstream_Mbps": all_data.get("local_upstream_speed", "N/A"),
+        "Local_Speedtest_Jitter_ms": all_data.get("local_speedtest_jitter", "N/A"),
+        "WiFi_BSSID": all_data.get("wifi_bssid", "N/A"),
+        "WiFi_Channel": all_data.get("wifi_channel", "N/A"),
+        "WiFi_RSSI": all_data.get("wifi_rssi", "N/A"),
+        "WiFi_Noise": all_data.get("wifi_noise", "N/A"),
+        "WiFi_TxRate_Mbps": all_data.get("wifi_tx_rate", "N/A"),
     }
     header = "Timestamp," + ",".join(data_points.keys()) + "\n"
     log_entry = timestamp + "," + ",".join(str(v) for v in data_points.values()) + "\n"
 
-    # Determine if the header needs to be written.
-    # This is true if the file doesn't exist or if it's empty.
     write_header = (
         not os.path.exists(config.LOG_FILE) or os.path.getsize(config.LOG_FILE) == 0
     )
@@ -115,14 +141,28 @@ def log_results(all_data: dict[str, str | float | int]) -> None:
         f.write(log_entry)
 
     print("\n--- Gateway Test Results ---")
-    print(f"  RTT (WAN):            {data_points['Gateway_RTT_ms']} ms")
-    print(f"  Downstream Speed:     {data_points['Gateway_Downstream_Mbps']} Mbps")
-    print(f"  Upstream Speed:       {data_points['Gateway_Upstream_Mbps']} Mbps")
+    print(f"  WAN RTT (min/avg/max):      {data_points['Gateway_RTT_ms']} ms")
+    print(
+        f"  Downstream Speed:           {data_points['Gateway_Downstream_Mbps']} Mbps"
+    )
+    print(f"  Upstream Speed:             {data_points['Gateway_Upstream_Mbps']} Mbps")
+
     print("\n--- Local Machine Test Results ---")
-    print(f"  RTT (Local -> WAN):   {data_points['Local_WAN_RTT_ms']} ms")
-    print(f"  RTT (Local -> GW):    {data_points['Local_GW_RTT_ms']} ms")
-    print(f"  Downstream Speed:     {data_points['Local_Downstream_Mbps']} Mbps")
-    print(f"  Upstream Speed:       {data_points['Local_Upstream_Mbps']} Mbps")
+    print(f"  WAN RTT (min/avg/max):      {data_points['Local_WAN_RTT_ms']} ms")
+    print(f"  Ping Jitter (StdDev):       {data_points['Local_WAN_Ping_StdDev']} ms")
+    print(f"  Gateway RTT (min/avg/max):  {data_points['Local_GW_RTT_ms']} ms")
+    print(f"  Downstream Speed:           {data_points['Local_Downstream_Mbps']} Mbps")
+    print(f"  Upstream Speed:             {data_points['Local_Upstream_Mbps']} Mbps")
+    print(
+        f"  Speedtest Jitter:           {data_points['Local_Speedtest_Jitter_ms']} ms"
+    )
+
+    print("\n--- Wi-Fi Diagnostics ---")
+    print(f"  Connected AP (BSSID):       {data_points['WiFi_BSSID']}")
+    print(f"  Signal Strength (RSSI):     {data_points['WiFi_RSSI']}")
+    print(f"  Noise Level:                {data_points['WiFi_Noise']}")
+    print(f"  Channel/Band:               {data_points['WiFi_Channel']}")
+    print(f"  Transmit Rate:              {data_points['WiFi_TxRate_Mbps']} Mbps")
     print("------------------------------------")
     full_path = os.path.abspath(config.LOG_FILE)
     print(f"Results appended to: {full_path}")
@@ -298,11 +338,15 @@ def run_local_speed_test_task() -> Optional[Dict[str, str]]:
         ) / 1_000_000
         upload_speed = (results.get("upload", {}).get("bandwidth", 0) * 8) / 1_000_000
 
+        # NEW: Extract jitter from the 'ping' sub-dictionary
+        jitter = results.get("ping", {}).get("jitter", 0.0)
+
         print("Local speed test complete.")
 
         return {
             "local_downstream_speed": f"{download_speed:.2f}",
             "local_upstream_speed": f"{upload_speed:.2f}",
+            "local_speedtest_jitter": f"{jitter:.3f}",
         }
 
     except subprocess.CalledProcessError as e:
@@ -323,6 +367,82 @@ def run_local_speed_test_task() -> Optional[Dict[str, str]]:
         return None
 
 
+def run_wifi_diagnostics_task() -> dict[str, str]:
+    """
+    Uses a hybrid approach: wdutil for live Wi-Fi stats (signal, etc.) and
+    arp for a reliable BSSID (via the default gateway's MAC address).
+
+    Returns:
+        A dictionary of Wi-Fi metrics.
+    """
+    print("Running local Wi-Fi diagnostics...")
+    results: dict[str, str] = {}
+
+    # --- Part 1: Get Signal, Noise, etc. from wdutil ---
+    try:
+        # This command requires the sudoers file to be configured for NOPASSWD.
+        command = ["sudo", "wdutil", "info"]
+        process = subprocess.run(
+            command, capture_output=True, text=True, timeout=10, check=True
+        )
+        output = process.stdout
+
+        def find_value(key: str, text: str) -> str:
+            """Helper to find values in the wdutil output using regex."""
+            match = re.search(rf"^\s*{key}\s*:\s*(.*)$", text, re.MULTILINE)
+            return match.group(1).strip() if match else "N/A"
+
+        results["wifi_rssi"] = find_value("RSSI", output)
+        results["wifi_noise"] = find_value("Noise", output)
+        results["wifi_tx_rate"] = find_value("TxRate", output)
+        results["wifi_channel"] = find_value("Channel", output)
+
+    except Exception as e:
+        print(f"Warning: Could not parse wdutil output. Error: {e}")
+
+    # --- Part 2: Programmatically find Gateway IP and get its MAC Address (BSSID) ---
+    try:
+        route_command = ["route", "-n", "get", "default"]
+        route_process = subprocess.run(
+            route_command, capture_output=True, text=True, timeout=10, check=True
+        )
+        gateway_match = re.search(
+            r"^\s*gateway:\s*(\S+)", route_process.stdout, re.MULTILINE
+        )
+
+        if not gateway_match:
+            raise Exception("Could not determine default gateway IP.")
+
+        gateway_ip = gateway_match.group(1)
+        ping_command = ["ping", "-c", "1", gateway_ip]
+        subprocess.run(ping_command, capture_output=True, text=True, timeout=10)
+        arp_command = ["arp", "-n", gateway_ip]
+        arp_process = subprocess.run(
+            arp_command, capture_output=True, text=True, timeout=10, check=True
+        )
+        arp_match = re.search(r"at\s+([0-9a-fA-F:]+)", arp_process.stdout)
+
+        if arp_match:
+            results["wifi_bssid"] = arp_match.group(1)
+
+    except Exception as e:
+        print(f"Warning: Could not get BSSID from ARP table. Error: {e}")
+
+    # Fill any missing keys with "N/A" to ensure consistent dictionary structure
+    for key in [
+        "wifi_rssi",
+        "wifi_noise",
+        "wifi_tx_rate",
+        "wifi_channel",
+        "wifi_bssid",
+    ]:
+        if key not in results:
+            results[key] = "N/A"
+
+    print("Local Wi-Fi diagnostics complete.")
+    return results
+
+
 def perform_checks() -> None:
     """Main automation function to run all configured tests and log results."""
     global run_counter, DEVICE_ACCESS_CODE
@@ -334,6 +454,10 @@ def perform_checks() -> None:
     )
 
     # --- Run Local Tests (No Browser Required) ---
+    wifi_results = run_wifi_diagnostics_task()
+    if wifi_results:
+        master_results.update(wifi_results)
+
     if config.RUN_LOCAL_PING_TEST:
         wan_ping_results = run_local_ping_task(config.PING_TARGET)
         master_results.update(
