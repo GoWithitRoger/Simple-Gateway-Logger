@@ -1,4 +1,4 @@
-<p align="left"> <img src="./icon.svg" alt="Simple Gateway Logger" width="200"> </p>
+<p align="left"> <img src="./icon.svg" alt="Simple Gateway Logger" width="150"> </p>
 
 # Simple Gateway Logger
 
