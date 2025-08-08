@@ -2,8 +2,7 @@
 # dependencies = [
 #   "schedule>=1.2.2,<2.0.0",
 #   "selenium>=4.18.0,<5.0.0",
-#   "python-dotenv>=1.0.1",
-#   "flent>=2.2.0",
+#   "python-dotenv>=1.0.1"
 # ]
 # ///
 # main.py
@@ -14,6 +13,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import time
 from datetime import datetime
 from typing import Dict, Optional
@@ -380,47 +380,64 @@ def run_local_speed_test_task() -> Optional[Dict[str, str]]:
 
 
 def run_flent_test_task() -> Optional[Dict[str, str]]:
-    """Runs a flent test to measure bufferbloat."""
+    """Runs a flent test to measure bufferbloat and parses the stats."""
     print("Running flent test for bufferbloat...")
     try:
-        # Use the rrul_be (Real-Time Response Under Load - Background Traffic)
-        # test, which is a good general-purpose bufferbloat test.
-        # --socket-stats enables additional data collection.
-        # --test-parameter=server=automatic uses flent's auto-server feature.
-        # --json-output sends structured JSON data to stdout.
+        # Use the rrul_be test and output stats to stdout.
         command = [
             "flent",
             "rrul_be",
             "--socket-stats",
             "--test-parameter=server=automatic",
-            "--json-output",
-            "-",  # Directs JSON output to stdout
+            "-f", "stats",
+            "-o", "-",  # Output to stdout
         ]
 
         process = subprocess.run(
             command, capture_output=True, text=True, timeout=180, check=True
         )
 
-        results = json.loads(process.stdout)
+        output = process.stdout
 
-        # Extract key metrics from the detailed JSON output. We focus on the
-        # aggregate statistics for ping latency, and download/upload throughput.
-        ping_avg = results.get("pings_all", {}).get("avg", 0.0)
-        dl_avg = results.get("download_streams_all", {}).get("avg", 0.0)
-        ul_avg = results.get("upload_streams_all", {}).get("avg", 0.0)
+        def parse_flent_stats(text: str) -> Dict[str, str]:
+            """Parses the text output of 'flent -f stats'."""
+            results = {}
+            # Regex patterns to find the average values for ping, download, and upload.
+            patterns = {
+                "flent_ping_ms": r"Ping \(ms\) avg:\s+([\d\.]+)",
+                "flent_dl_mbps": r"TCP download avg \(Mbit/s\):\s+([\d\.]+)",
+                "flent_ul_mbps": r"TCP upload avg \(Mbit/s\):\s+([\d\.]+)",
+            }
+            for key, pattern in patterns.items():
+                match = re.search(pattern, text)
+                if match:
+                    # Format to two decimal places, consistent with other metrics.
+                    results[key] = f"{float(match.group(1)):.2f}"
+            return results
+
+        parsed_results = parse_flent_stats(output)
+
+        if not parsed_results:
+            print("Warning: Could not parse flent stats output.")
+            print(f"--- Raw STDOUT ---\n{output}\n--------------------")
+            return None
 
         print("Flent test complete.")
-        return {
-            "flent_ping_ms": f"{ping_avg:.2f}",
-            "flent_dl_mbps": f"{dl_avg:.2f}",
-            "flent_ul_mbps": f"{ul_avg:.2f}",
-        }
+        return parsed_results
 
     except FileNotFoundError:
-        print(
-            "Error: 'flent' command not found. "
-            "Please ensure it's installed and in your system's PATH."
-        )
+        print("\n--- Flent Not Found ---")
+        print("Error: 'flent' command not found.")
+        if sys.platform == "darwin":
+            print("On macOS, you can install it using Homebrew: brew install flent")
+        elif sys.platform == "linux":
+            print(
+                "On Debian/Ubuntu, use: sudo apt-get install flent\n"
+                "On Fedora, use: sudo dnf install flent"
+            )
+        else:
+            print("Please install flent using your system's package manager.")
+        print("-----------------------")
         return None
     except subprocess.CalledProcessError as e:
         print(f"Error: The 'flent' command failed with return code {e.returncode}.")
@@ -428,12 +445,6 @@ def run_flent_test_task() -> Optional[Dict[str, str]]:
         return None
     except subprocess.TimeoutExpired:
         print("Error: The flent test command timed out after 180 seconds.")
-        return None
-    except (json.JSONDecodeError, KeyError) as e:
-        print(f"Error: Could not parse JSON output from 'flent' command. Error: {e}")
-        # To aid debugging, print the raw output if parsing fails
-        if "process" in locals() and process.stdout:
-            print(f"--- Raw STDOUT ---\n{process.stdout}\n--------------------")
         return None
     except Exception as e:
         print(f"An unexpected error occurred during the flent test: {e}")

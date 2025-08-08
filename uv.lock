@@ -95,15 +95,6 @@ wheels = [
 ]
 
 [[package]]
-name = "flent"
-version = "2.2.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/ff/a4/19645960dcd454a7144589c4f5befdb186111066fd95bad932fc82ea47e1/flent-2.2.0.tar.gz", hash = "sha256:04fc21de858863560423e79c822f405225f829afd8e5d62293099fbef341f9e8", size = 3679321, upload-time = "2024-09-10T15:09:41.726Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/a4/5d/d138400b0fc0a9d16790fbb866d89e5db6cd76c51bc59085b460b56bcff4/flent-2.2.0-py2.py3-none-any.whl", hash = "sha256:10794e2c50561c76e7c19bc4d6651986e12562c7071d607982b6007b370e6c59", size = 4056275, upload-time = "2024-09-10T15:09:37.293Z" },
-]
-
-[[package]]
 name = "h11"
 version = "0.16.0"
 source = { registry = "https://pypi.org/simple" }
@@ -283,7 +274,6 @@ name = "simple-gateway-logger"
 version = "0.2.0"
 source = { virtual = "." }
 dependencies = [
-    { name = "flent" },
     { name = "python-dotenv" },
     { name = "schedule" },
     { name = "selenium" },
@@ -299,7 +289,6 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "flent", specifier = ">=2.2.0" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
     { name = "schedule", specifier = ">=1.2.2,<2.0.0" },
     { name = "selenium", specifier = ">=4.18.0,<5.0.0" },

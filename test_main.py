@@ -254,7 +254,11 @@ def test_wifi_diagnostics_success(mock_run):
         # ping -c 1 192.168.1.254
         MagicMock(stdout="", returncode=0, stderr=""),
         # arp -n 192.168.1.254
-        MagicMock(stdout="? (192.168.1.254) at a1:b2:c3:d4:e5:f6 on en0 ifscope [ethernet]", returncode=0, stderr=""),
+        MagicMock(
+            stdout="? (192.168.1.254) at a1:b2:c3:d4:e5:f6 on en0 ifscope [ethernet]",
+            returncode=0,
+            stderr="",
+        ),
     ]
     results = run_wifi_diagnostics_task()
     assert results["wifi_rssi"] == "-55"
@@ -277,41 +281,61 @@ def test_wifi_diagnostics_failure(mock_run):
     assert results["wifi_channel"] == "N/A"
 
 
-# Mock JSON output from a successful flent run
-FLENT_JSON_OUTPUT = """
-{
-    "pings_all": { "avg": 25.5, "min": 10.1, "max": 40.2, "len": 100 },
-    "download_streams_all": { "avg": 85.5, "sum": 855.0 },
-    "upload_streams_all": { "avg": 18.2, "sum": 182.0 }
-}
+# Mock stats output from a successful flent run
+FLENT_STATS_OUTPUT = """
+Ping (ms) avg: 25.50
+TCP download avg (Mbit/s): 85.50
+TCP upload avg (Mbit/s): 18.20
 """
 
 
 @patch("main.subprocess.run")
 def test_run_flent_test_task_success(mock_run):
     """Tests the flent task function with a successful, mocked subprocess run."""
-    # Configure the mock to return a successful process with the sample JSON
     mock_run.return_value = MagicMock(
-        stdout=FLENT_JSON_OUTPUT, returncode=0, stderr=""
+        stdout=FLENT_STATS_OUTPUT, returncode=0, stderr=""
     )
 
     results = run_flent_test_task()
 
-    # Assert that the results are parsed correctly
     assert results is not None
     assert results["flent_ping_ms"] == "25.50"
     assert results["flent_dl_mbps"] == "85.50"
     assert results["flent_ul_mbps"] == "18.20"
 
-    # Verify that subprocess.run was called with the expected command
     expected_command = [
         "flent",
         "rrul_be",
         "--socket-stats",
         "--test-parameter=server=automatic",
-        "--json-output",
-        "-",
+        "-f", "stats",
+        "-o", "-",
     ]
     mock_run.assert_called_once_with(
         expected_command, capture_output=True, text=True, timeout=180, check=True
     )
+
+
+@patch("main.sys")
+@patch("main.subprocess.run")
+def test_run_flent_test_task_file_not_found(mock_run, mock_sys, capsys):
+    """Tests the flent task function when the command is not found."""
+    mock_run.side_effect = FileNotFoundError
+
+    # Test for macOS
+    mock_sys.platform = "darwin"
+    run_flent_test_task()
+    captured = capsys.readouterr()
+    assert "brew install flent" in captured.out
+
+    # Test for Linux
+    mock_sys.platform = "linux"
+    run_flent_test_task()
+    captured = capsys.readouterr()
+    assert "apt-get install flent" in captured.out
+
+    # Test for other OS
+    mock_sys.platform = "win32"
+    run_flent_test_task()
+    captured = capsys.readouterr()
+    assert "Please install flent using your system's package manager" in captured.out
