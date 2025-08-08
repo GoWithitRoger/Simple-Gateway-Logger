@@ -41,7 +41,7 @@ import requests
 # ... app code
 ``` 
 
-**Constraint**: This frontmatter method is only for the application's entry point (`main.py`). All runtime dependencies required by `main.py` and any local modules it imports (e.g., helper.py) must be declared in the frontmatter of `main.py`.
+**Constraint**: This frontmatter method is only for the application's entry point (`main.py`). **All runtime dependencies required by `main.py` and any local modules it imports** (e.g., helper.py) *must* be declared in the frontmatter of `main.py`.
 * * *
 
 
