@@ -23,8 +23,9 @@ def mock_driver():
 
 # --- Tests for run_ping_test_task ---
 
+@patch("main.time.sleep")
 @patch("main.WebDriverWait")
-def test_ping_task_success(mock_wait, mock_driver):
+def test_ping_task_success(mock_wait, mock_sleep, mock_driver):
     """Tests the happy path for the gateway ping test."""
     mock_target_input = MagicMock()
     mock_ping_button = MagicMock()
@@ -52,14 +53,16 @@ def test_ping_task_success(mock_wait, mock_driver):
     assert results["gateway_loss_percentage"] == 0.0
     assert results["gateway_rtt_avg_ms"] == 15.2
 
+@patch("main.time.sleep")
 @patch("main.WebDriverWait")
-def test_ping_task_timeout_exception(mock_wait, mock_driver):
+def test_ping_task_timeout_exception(mock_wait, mock_sleep, mock_driver):
     """Tests that the function returns None when a timeout occurs."""
     mock_wait.return_value.until.side_effect = TimeoutException("Element not found")
     results = run_ping_test_task(mock_driver)
     assert results is None
 
-def test_ping_task_empty_results(mock_driver):
+@patch("main.time.sleep")
+def test_ping_task_empty_results(mock_sleep, mock_driver):
     """Tests that the function returns None if the result text is empty."""
     mock_progress_element = MagicMock()
     mock_progress_element.get_attribute.return_value = ""
@@ -70,8 +73,9 @@ def test_ping_task_empty_results(mock_driver):
 
 # --- Tests for run_speed_test_task ---
 
+@patch("main.time.sleep")
 @patch("main.WebDriverWait")
-def test_speed_test_task_success(mock_wait, mock_driver):
+def test_speed_test_task_success(mock_wait, mock_sleep, mock_driver):
     """Tests the happy path for the gateway speed test, assuming already logged in."""
     # Mock the WebDriverWait to simulate no password field
     # Mock the table for result parsing
@@ -110,8 +114,9 @@ def test_speed_test_task_success(mock_wait, mock_driver):
     assert results["downstream_speed"] == 123.45
     assert results["upstream_speed"] == 67.89
 
+@patch("main.time.sleep")
 @patch("main.WebDriverWait")
-def test_speed_test_task_login_required(mock_wait, mock_driver):
+def test_speed_test_task_login_required(mock_wait, mock_sleep, mock_driver):
     """Tests that the function attempts to log in if the password field is found."""
     mock_password_input = MagicMock()
     mock_continue_button = MagicMock()
@@ -134,8 +139,9 @@ def test_speed_test_task_login_required(mock_wait, mock_driver):
     mock_continue_button.click.assert_called_once()
     mock_run_button.click.assert_called_once()
 
+@patch("main.time.sleep")
 @patch("main.WebDriverWait")
-def test_speed_test_task_timeout_exception(mock_wait, mock_driver):
+def test_speed_test_task_timeout_exception(mock_wait, mock_sleep, mock_driver):
     """Tests that the function returns None when a timeout occurs finding the run button."""
     # First wait for password field times out
     mock_wait.return_value.until.side_effect = TimeoutException("No password field")
