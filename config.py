@@ -29,3 +29,24 @@ RUN_LOCAL_PING_TEST: bool = True
 RUN_LOCAL_SPEED_TEST: bool = True
 # Set to True to run a ping test from the local machine to the gateway itself.
 RUN_LOCAL_GATEWAY_PING_TEST: bool = True
+
+
+# --- Anomaly Detection Configuration ---
+# Set to True to enable highlighting of anomalous results in the console output.
+ENABLE_ANOMALY_HIGHLIGHTING: bool = True
+
+# --- Anomaly Thresholds ---
+# NOTE: Set a value to None to disable the check for that specific metric.
+# Any packet loss percentage strictly greater than this value is an anomaly.
+PACKET_LOSS_THRESHOLD: float = 0.0
+# Any ping RTT (average) strictly greater than this value (in ms) is an anomaly.
+PING_RTT_THRESHOLD: float = 30.0
+# Any jitter measurement strictly greater than this value (in ms) is an anomaly.
+JITTER_THRESHOLD: float = 5.0
+
+# --- Speed Test Thresholds (in Mbps) ---
+# Set separate thresholds for speed tests. Anomalies are values strictly LESS than these.
+LOCAL_DOWNSTREAM_SPEED_THRESHOLD: float = 225.0
+LOCAL_UPSTREAM_SPEED_THRESHOLD: float = 225.0
+GATEWAY_DOWNSTREAM_SPEED_THRESHOLD: float = 300.0
+GATEWAY_UPSTREAM_SPEED_THRESHOLD: float = 300.0

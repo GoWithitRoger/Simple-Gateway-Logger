@@ -32,6 +32,19 @@ from selenium.webdriver.support.ui import WebDriverWait
 # Local application imports
 import config
 
+
+# --- ANSI Color Codes ---
+class Colors:
+    """A class to hold ANSI color codes for terminal output."""
+
+    RED = "\033[91m"
+    GREEN = "\033[92m"
+    YELLOW = "\033[93m"
+    CYAN = "\033[96m"
+    RESET = "\033[0m"
+    BOLD = "\033[1m"
+
+
 # Load environment variables
 load_dotenv()
 
@@ -51,110 +64,154 @@ def get_access_code() -> str:
     return entered_code
 
 
-def parse_gateway_ping_results(full_results: str) -> dict[str, str]:
-    """Parses the full ping output from the GATEWAY."""
-    results = {
-        "gateway_loss_percentage": "0%",
-        "gateway_rtt_stats": "N/A",
-    }
+def parse_gateway_ping_results(full_results: str) -> dict[str, float]:
+    """Parses the full ping output from the GATEWAY, returning numerical values."""
+    results: dict[str, float] = {}
     loss_match = re.search(r"(\d+)% packet loss", full_results)
     if loss_match:
-        results["gateway_loss_percentage"] = loss_match.group(0)
+        results["gateway_loss_percentage"] = float(loss_match.group(1))
+
     rtt_match = re.search(r"round-trip min/avg/max = ([\d./]+) ms", full_results)
     if rtt_match:
-        results["gateway_rtt_stats"] = rtt_match.group(1)
+        rtt_parts = rtt_match.group(1).split("/")
+        if len(rtt_parts) >= 3:
+            # Extract the 'avg' value
+            results["gateway_rtt_avg_ms"] = float(rtt_parts[1])
+
     return results
 
 
-def parse_local_ping_results(ping_output: str) -> dict[str, str]:
-    """Parses the output from the macOS/Unix native ping command.
-
-    Args:
-        ping_output: The raw string output from the ping command.
-
-    Returns:
-        A dictionary containing parsed metrics including packet loss percentage,
-        round-trip time statistics, and the standard deviation of ping times.
+def parse_local_ping_results(ping_output: str) -> dict[str, float]:
     """
-    results: dict[str, str] = {
-        "loss_percentage": "0% packet loss",
-        "rtt_stats": "N/A",
-        "ping_stddev": "N/A",
-    }
+    Parses local ping output, returning numerical values for key metrics.
+    Focuses on packet loss percentage, average RTT, and standard deviation.
+    """
+    results: dict[str, float] = {}
     loss_match = re.search(r"(\d+(?:\.\d+)?)% packet loss", ping_output)
     if loss_match:
-        loss_percent_str = loss_match.group(1)
-        results["loss_percentage"] = f"{loss_percent_str}% packet loss"
+        results["loss_percentage"] = float(loss_match.group(1))
 
-    # Use a more flexible regex to find the line, then safely parse its parts
     rtt_match = re.search(
         r"min/avg/max/(?:stddev|mdev)\s*=\s*([\d./]+)\s*ms", ping_output
     )
     if rtt_match:
         parts = rtt_match.group(1).split("/")
         if len(parts) == 4:
-            results["rtt_stats"] = f"{parts[0]}/{parts[1]}/{parts[2]}"
-            results["ping_stddev"] = parts[3]
-        else:
-            # Fallback for cases where stddev might be missing
-            results["rtt_stats"] = rtt_match.group(1)
+            results["rtt_avg_ms"] = float(parts[1])
+            results["ping_stddev"] = float(parts[3])
 
     return results
 
 
-def log_results(all_data: dict[str, str | float | int]) -> None:
+def log_results(all_data: dict[str, str | float | int | None]) -> None:
     """
-    Logs parsed results from all tests to a CSV file and prints a summary.
-    Ensures the header is written if the file is new or empty.
+    Logs results to a CSV file and prints a color-coded summary to the console
+    based on configured anomaly thresholds.
     """
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     data_points = {
-        "Gateway_LossPercentage": all_data.get("gateway_loss_percentage", "N/A"),
-        "Gateway_RTT_ms": all_data.get("gateway_rtt_stats", "N/A"),
-        "Gateway_Downstream_Mbps": all_data.get("downstream_speed", "N/A"),
-        "Gateway_Upstream_Mbps": all_data.get("upstream_speed", "N/A"),
-        "Local_WAN_LossPercentage": all_data.get("local_wan_loss_percentage", "N/A"),
-        "Local_WAN_RTT_ms": all_data.get("local_wan_rtt_stats", "N/A"),
-        "Local_WAN_Ping_StdDev": all_data.get("local_wan_ping_stddev", "N/A"),
-        "Local_GW_LossPercentage": all_data.get("local_gw_loss_percentage", "N/A"),
-        "Local_GW_RTT_ms": all_data.get("local_gw_rtt_stats", "N/A"),
-        "Local_GW_Ping_StdDev": all_data.get("local_gw_ping_stddev", "N/A"),
-        "Local_Downstream_Mbps": all_data.get("local_downstream_speed", "N/A"),
-        "Local_Upstream_Mbps": all_data.get("local_upstream_speed", "N/A"),
-        "Local_Speedtest_Jitter_ms": all_data.get("local_speedtest_jitter", "N/A"),
+        "Gateway_LossPercentage": all_data.get("gateway_loss_percentage"),
+        "Gateway_RTT_avg_ms": all_data.get("gateway_rtt_avg_ms"),
+        "Gateway_Downstream_Mbps": all_data.get("downstream_speed"),
+        "Gateway_Upstream_Mbps": all_data.get("upstream_speed"),
+        "Local_WAN_LossPercentage": all_data.get("local_wan_loss_percentage"),
+        "Local_WAN_RTT_avg_ms": all_data.get("local_wan_rtt_avg_ms"),
+        "Local_WAN_Ping_StdDev": all_data.get("local_wan_ping_stddev"),
+        "Local_GW_LossPercentage": all_data.get("local_gw_loss_percentage"),
+        "Local_GW_RTT_avg_ms": all_data.get("local_gw_rtt_avg_ms"),
+        "Local_GW_Ping_StdDev": all_data.get("local_gw_ping_stddev"),
+        "Local_Downstream_Mbps": all_data.get("local_downstream_speed"),
+        "Local_Upstream_Mbps": all_data.get("local_upstream_speed"),
+        "Local_Speedtest_Jitter_ms": all_data.get("local_speedtest_jitter"),
         "WiFi_BSSID": all_data.get("wifi_bssid", "N/A"),
         "WiFi_Channel": all_data.get("wifi_channel", "N/A"),
         "WiFi_RSSI": all_data.get("wifi_rssi", "N/A"),
         "WiFi_Noise": all_data.get("wifi_noise", "N/A"),
         "WiFi_TxRate_Mbps": all_data.get("wifi_tx_rate", "N/A"),
     }
-    header = "Timestamp," + ",".join(data_points.keys()) + "\n"
-    log_entry = timestamp + "," + ",".join(str(v) for v in data_points.values()) + "\n"
 
+    # --- CSV Logging ---
+    csv_values = [
+        f"{v:.3f}" if isinstance(v, float) else ("N/A" if v is None else v)
+        for v in data_points.values()
+    ]
+    header = "Timestamp," + ",".join(data_points.keys()) + "\n"
+    log_entry = timestamp + "," + ",".join(csv_values) + "\n"
     write_header = (
         not os.path.exists(config.LOG_FILE) or os.path.getsize(config.LOG_FILE) == 0
     )
-
     with open(config.LOG_FILE, "a") as f:
         if write_header:
             f.write(header)
         f.write(log_entry)
 
+    # --- Console Output Formatting ---
+    def format_value(
+        value: Optional[float],
+        unit: str,
+        threshold: Optional[float],
+        comparison: str = "greater",
+        default_color: str = "",
+        precision: int = 2,
+    ) -> str:
+        """Formats and colors a value based on a threshold."""
+        if value is None:
+            return f"{Colors.YELLOW}N/A{Colors.RESET}"
+
+        is_anomaly = False
+        if config.ENABLE_ANOMALY_HIGHLIGHTING and threshold is not None:
+            if comparison == "greater" and value > threshold:
+                is_anomaly = True
+            elif comparison == "less" and value < threshold:
+                is_anomaly = True
+
+        color = Colors.RED if is_anomaly else default_color
+        return (
+            f"{color}{value:.{precision}f}{Colors.RESET} {unit}"
+            if color
+            else f"{value:.{precision}f} {unit}"
+        )
+
+    # --- Print to Console ---
     print("\n--- Gateway Test Results ---")
-    print(f"  WAN RTT (min/avg/max):      {data_points['Gateway_RTT_ms']} ms")
     print(
-        f"  Downstream Speed:           {data_points['Gateway_Downstream_Mbps']} Mbps"
+        f"  Packet Loss:                {format_value(data_points['Gateway_LossPercentage'], '%', config.PACKET_LOSS_THRESHOLD)}"
     )
-    print(f"  Upstream Speed:             {data_points['Gateway_Upstream_Mbps']} Mbps")
+    print(
+        f"  WAN RTT (avg):              {format_value(data_points['Gateway_RTT_avg_ms'], 'ms', config.PING_RTT_THRESHOLD)}"
+    )
+    print(
+        f"  Downstream Speed:           {format_value(data_points['Gateway_Downstream_Mbps'], 'Mbps', config.GATEWAY_DOWNSTREAM_SPEED_THRESHOLD, 'less')}"
+    )
+    print(
+        f"  Upstream Speed:             {format_value(data_points['Gateway_Upstream_Mbps'], 'Mbps', config.GATEWAY_UPSTREAM_SPEED_THRESHOLD, 'less')}"
+    )
 
     print("\n--- Local Machine Test Results ---")
-    print(f"  WAN RTT (min/avg/max):      {data_points['Local_WAN_RTT_ms']} ms")
-    print(f"  Ping Jitter (StdDev):       {data_points['Local_WAN_Ping_StdDev']} ms")
-    print(f"  Gateway RTT (min/avg/max):  {data_points['Local_GW_RTT_ms']} ms")
-    print(f"  Downstream Speed:           {data_points['Local_Downstream_Mbps']} Mbps")
-    print(f"  Upstream Speed:             {data_points['Local_Upstream_Mbps']} Mbps")
     print(
-        f"  Speedtest Jitter:           {data_points['Local_Speedtest_Jitter_ms']} ms"
+        f"  WAN Packet Loss:            {format_value(data_points['Local_WAN_LossPercentage'], '%', config.PACKET_LOSS_THRESHOLD)}"
+    )
+    print(
+        f"  WAN RTT (avg):              {format_value(data_points['Local_WAN_RTT_avg_ms'], 'ms', config.PING_RTT_THRESHOLD)}"
+    )
+    print(
+        f"  Ping Jitter (StdDev):       {format_value(data_points['Local_WAN_Ping_StdDev'], 'ms', config.JITTER_THRESHOLD, precision=3)}"
+    )
+    print(
+        f"  Gateway Packet Loss:        {format_value(data_points['Local_GW_LossPercentage'], '%', config.PACKET_LOSS_THRESHOLD)}"
+    )
+    # Special color for Local GW RTT
+    print(
+        f"  Gateway RTT (avg):          {format_value(data_points['Local_GW_RTT_avg_ms'], 'ms', config.PING_RTT_THRESHOLD, default_color=Colors.CYAN)}"
+    )
+    print(
+        f"  Downstream Speed:           {format_value(data_points['Local_Downstream_Mbps'], 'Mbps', config.LOCAL_DOWNSTREAM_SPEED_THRESHOLD, 'less')}"
+    )
+    print(
+        f"  Upstream Speed:             {format_value(data_points['Local_Upstream_Mbps'], 'Mbps', config.LOCAL_UPSTREAM_SPEED_THRESHOLD, 'less')}"
+    )
+    print(
+        f"  Speedtest Jitter:           {format_value(data_points['Local_Speedtest_Jitter_ms'], 'ms', config.JITTER_THRESHOLD, precision=3)}"
     )
 
     print("\n--- Wi-Fi Diagnostics ---")
@@ -168,7 +225,7 @@ def log_results(all_data: dict[str, str | float | int]) -> None:
     print(f"Results appended to: {full_path}")
 
 
-def run_ping_test_task(driver: WebDriver) -> Optional[Dict[str, str]]:
+def run_ping_test_task(driver: WebDriver) -> Optional[Dict[str, float]]:
     """Runs the ping test on the gateway's diagnostics page and logs raw output."""
     print("Navigating to gateway diagnostics page for ping test...")
     driver.get(config.DIAG_URL)
@@ -207,8 +264,10 @@ def run_ping_test_task(driver: WebDriver) -> Optional[Dict[str, str]]:
 
 def run_speed_test_task(
     driver: WebDriver, access_code: str
-) -> Optional[Dict[str, str]]:
-    """Automates the gateway speed test, including login if required."""
+) -> Optional[Dict[str, float]]:
+    """
+    Automates the gateway speed test, returning numerical values for speeds.
+    """
     print("Navigating to gateway speed test page...")
     driver.get(config.SPEED_TEST_URL)
     try:
@@ -222,6 +281,7 @@ def run_speed_test_task(
             time.sleep(2)
         except TimeoutException:
             print("Already logged in or no password required for gateway speed test.")
+
         run_button = WebDriverWait(driver, 15).until(
             EC.element_to_be_clickable((By.NAME, "run"))
         )
@@ -229,7 +289,8 @@ def run_speed_test_task(
         print("Gateway speed test initiated. This will take up to 90 seconds...")
         WebDriverWait(driver, 90).until(EC.element_to_be_clickable((By.NAME, "run")))
         print("Gateway speed test complete. Parsing results...")
-        results: Dict[str, str] = {}
+
+        results: Dict[str, float] = {}
         table = WebDriverWait(driver, 10).until(
             EC.visibility_of_element_located((By.CSS_SELECTOR, "table.grid.table100"))
         )
@@ -239,7 +300,7 @@ def run_speed_test_task(
             if len(cols) >= 3:
                 direction = cols[1].text.lower()
                 try:
-                    speed = f"{float(cols[2].text):.2f}"
+                    speed = float(cols[2].text)
                     if "downstream" in direction and "downstream_speed" not in results:
                         results["downstream_speed"] = speed
                     elif "upstream" in direction and "upstream_speed" not in results:
@@ -254,7 +315,7 @@ def run_speed_test_task(
         return None
 
 
-def run_local_ping_task(target: str) -> Dict[str, str]:
+def run_local_ping_task(target: str) -> Dict[str, float]:
     """Runs a ping test from the local OS to the specified target."""
     print(f"Running local ping test to {target}...")
     try:
@@ -278,16 +339,13 @@ def run_local_ping_task(target: str) -> Dict[str, str]:
         return {}
 
 
-def run_local_speed_test_task() -> Optional[Dict[str, str]]:
+def run_local_speed_test_task() -> Optional[Dict[str, float]]:
     """
-    Runs a speed test using the official Ookla Speedtest CLI, ensuring the
-    correct executable is called by using its absolute path.
+    Runs a local speed test, returning numerical values for key metrics.
     """
     print("Running local speed test using the official Ookla CLI...")
 
-    # Find the absolute path to the Homebrew-installed Ookla speedtest executable
     ookla_path = None
-    # Standard paths for Homebrew on Intel and Apple Silicon Macs
     possible_paths = ["/opt/homebrew/bin/speedtest", "/usr/local/bin/speedtest"]
     for path in possible_paths:
         if os.path.exists(path):
@@ -298,8 +356,7 @@ def run_local_speed_test_task() -> Optional[Dict[str, str]]:
         print("\n---")
         print("Error: Could not find the Ookla 'speedtest' executable.")
         print(
-            "Please ensure it is installed via Homebrew and located in one of these "
-            "paths:"
+            "Please ensure it is installed via Homebrew and located in one of these paths:"
         )
         print(f"  {', '.join(possible_paths)}")
         print("Installation command: brew install speedtest")
@@ -307,15 +364,11 @@ def run_local_speed_test_task() -> Optional[Dict[str, str]]:
         return None
 
     try:
-        # Command uses the absolute path to the Ookla client with correct arguments
         command = [ookla_path, "--accept-license", "--accept-gdpr", "--format=json"]
-
-        # Execute the command
         process = subprocess.run(
             command, capture_output=True, text=True, timeout=120, check=True
         )
 
-        # Find the JSON part of the output, as the tool may print progress lines first
         json_output = None
         for line in process.stdout.splitlines():
             if line.strip().startswith("{"):
@@ -331,22 +384,18 @@ def run_local_speed_test_task() -> Optional[Dict[str, str]]:
 
         results = json.loads(json_output)
 
-        # The 'bandwidth' value is in bytes per second. Convert to Mbps.
-        # (bytes/sec * 8 bits/byte) / 1,000,000 bits/Mbps = Mbps
         download_speed = (
             results.get("download", {}).get("bandwidth", 0) * 8
         ) / 1_000_000
         upload_speed = (results.get("upload", {}).get("bandwidth", 0) * 8) / 1_000_000
-
-        # NEW: Extract jitter from the 'ping' sub-dictionary
         jitter = results.get("ping", {}).get("jitter", 0.0)
 
         print("Local speed test complete.")
 
         return {
-            "local_downstream_speed": f"{download_speed:.2f}",
-            "local_upstream_speed": f"{upload_speed:.2f}",
-            "local_speedtest_jitter": f"{jitter:.3f}",
+            "local_downstream_speed": download_speed,
+            "local_upstream_speed": upload_speed,
+            "local_speedtest_jitter": jitter,
         }
 
     except subprocess.CalledProcessError as e:
