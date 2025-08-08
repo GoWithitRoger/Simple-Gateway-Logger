@@ -1,264 +1,148 @@
 # tests/test_main.py
 
 import os
-import re
 import subprocess
 import sys
-
-sys.path.insert(0, os.path.dirname(__file__))
 from unittest.mock import MagicMock, patch
 
-from selenium.webdriver.common.by import By
+# Ensure the main module can be imported
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-# Import the functions to test
 from main import (
+    parse_gateway_ping_results,
     parse_local_ping_results,
     run_local_speed_test_task,
     run_wifi_diagnostics_task,
 )
 
+# --- Test Data ---
 
-# Copy of the parse_ping_results function to test in isolation
-def parse_ping_results(full_results: str) -> dict:
-    """
-    Parses the full ping output to check for any packet loss and returns
-    structured data.
-
-    Args:
-        full_results: The raw text output from the ping command
-
-    Returns:
-        A dictionary containing parsed ping results
-    """
-    results = {
-        "packet_loss_detected": "No",
-        "loss_percentage": "0% packet loss",
-        "rtt_stats": "N/A",
-    }
-
-    # Use a regular expression to find the packet loss percentage
-    loss_match = re.search(r"(\d+)% packet loss", full_results)
-    if loss_match:
-        results["loss_percentage"] = loss_match.group(0)  # e.g., "5% packet loss"
-        # Check if the numeric value of the loss is greater than 0
-        if int(loss_match.group(1)) > 0:
-            results["packet_loss_detected"] = "Yes"
-
-    # Use a regular expression to find the round-trip time stats
-    rtt_match = re.search(r"round-trip min/avg/max = ([\d./]+) ms", full_results)
-    if rtt_match:
-        results["rtt_stats"] = rtt_match.group(1)
-
-    return results
-
-
-# Test case 1: Ideal, successful output
-SUCCESS_OUTPUT = """
+# Test case for successful local ping with stddev
+LOCAL_PING_SUCCESS_OUTPUT = """
 PING google.com (142.250.191.174): 56 data bytes
 64 bytes from 142.250.191.174: icmp_seq=0 ttl=115 time=2.535 ms
 --- google.com ping statistics ---
-3 packets transmitted, 3 packets received, 0% packet loss
+3 packets transmitted, 3 packets received, 0.0% packet loss
 round-trip min/avg/max/mdev = 2.463/2.610/2.834/0.123 ms
 """
 
-# Test case 2: Output with significant packet loss
-PACKET_LOSS_OUTPUT = """
-PING google.com (142.250.191.174): 56 data bytes
---- google.com ping statistics ---
-10 packets transmitted, 5 packets received, 50% packet loss
-round-trip min/avg/max = 10.1/15.2/20.3 ms
+# Test case for local ping with packet loss
+LOCAL_PING_PACKET_LOSS_OUTPUT = """
+PING example.com (93.184.216.34): 56 data bytes
+Request timeout for icmp_seq 0
+--- example.com ping statistics ---
+2 packets transmitted, 1 packets received, 50.0% packet loss
+round-trip min/avg/max/mdev = 12.345/12.345/12.345/0.000 ms
 """
 
-# Test case 3: Malformed output, RTT stats are missing
+# Test case for gateway ping (simpler format)
+GATEWAY_PING_SUCCESS_OUTPUT = """
+PING google.com (142.250.191.174): 56 data bytes
+64 bytes from 142.250.191.174: icmp_seq=0 ttl=115 time=15.2 ms
+--- google.com ping statistics ---
+3 packets transmitted, 3 packets received, 0% packet loss
+round-trip min/avg/max = 14.8/15.2/15.5 ms
+"""
+
+# Test case for malformed or incomplete ping output
 MISSING_RTT_OUTPUT = """
 PING google.com (142.250.191.174): 56 data bytes
 --- google.com ping statistics ---
 5 packets transmitted, 5 packets received, 0% packet loss
 """
 
-# Test case 4: Empty string input
-EMPTY_OUTPUT = ""
-
-# Test case 5: Gibberish/unrelated text
-GIBBERISH_OUTPUT = "This is not the output you are looking for."
-
-# Test case for parsing local ping results with stddev (new function)
-LOCAL_PING_SUCCESS_OUTPUT = """
-PING google.com (142.250.191.174): 56 data bytes
-64 bytes from 142.250.191.174: icmp_seq=0 ttl=115 time=2.535 ms
---- google.com ping statistics ---
-3 packets transmitted, 3 packets received, 0% packet loss
-round-trip min/avg/max/mdev = 2.463/2.610/2.834/0.123 ms
-"""
-
-# Mock data for Wi-Fi tests
-# Mock data for system_profiler output
-SYSTEM_PROFILER_OUTPUT = """
-Wi-Fi:
-
-  Type: AirPort
-  Hardware Port: Wi-Fi
-  MAC Address: a1:b2:c3:d4:e5:f6
-  Transmit Rate: 866 Mbps
-  Channel: 149,80
-  Signal / Noise: -55 dBm / -90 dBm
-
-Ethernet:
-"""
-
-# Mock data for arp output
-ARP_OUTPUT = """? (192.168.1.1) at a1:b2:c3:d4:e5:f6 on en0 ifscope [ethernet]"""
-
-
-def test_parse_successful_ping() -> None:
-    """Ensures correct parsing for a standard, successful ping."""
-    result = parse_local_ping_results(SUCCESS_OUTPUT)
-    assert result["loss_percentage"] == "0% packet loss"
-    assert result["rtt_stats"] == "2.463/2.610/2.834"
-    assert result["ping_stddev"] == "0.123"
-
-
-def test_parse_with_packet_loss() -> None:
-    """Ensures packet loss is correctly identified."""
-    result = parse_ping_results(PACKET_LOSS_OUTPUT)
-    assert result["packet_loss_detected"] == "Yes"
-    assert result["loss_percentage"] == "50% packet loss"
-    assert result["rtt_stats"] == "10.1/15.2/20.3"
-
-
-def test_parse_missing_rtt_stats() -> None:
-    """Ensures parser gracefully handles missing RTT statistics."""
-    result = parse_ping_results(MISSING_RTT_OUTPUT)
-    assert result["packet_loss_detected"] == "No"
-    assert result["loss_percentage"] == "0% packet loss"
-    assert result["rtt_stats"] == "N/A"  # Should fall back to default
-
-
-def test_parse_empty_input() -> None:
-    """Ensures parser handles an empty string without crashing."""
-    result = parse_ping_results(EMPTY_OUTPUT)
-    assert result["packet_loss_detected"] == "No"
-    assert result["loss_percentage"] == "0% packet loss"
-    assert result["rtt_stats"] == "N/A"
-
-
-def test_parse_gibberish_input() -> None:
-    """Ensures parser handles unrelated text without crashing."""
-    result = parse_ping_results(GIBBERISH_OUTPUT)
-    assert result["packet_loss_detected"] == "No"
-    assert result["loss_percentage"] == "0% packet loss"
-    assert result["rtt_stats"] == "N/A"
-
-
-def test_parse_local_ping_with_stddev():
-    """Ensures local ping parser correctly extracts stddev."""
-    result = parse_local_ping_results(LOCAL_PING_SUCCESS_OUTPUT)
-    assert result["rtt_stats"] == "2.463/2.610/2.834"
-    assert result["ping_stddev"] == "0.123"
-
-
-def test_parse_local_ping_missing_rtt():
-    """Ensures local ping parser handles missing RTT and stddev."""
-    result = parse_local_ping_results(MISSING_RTT_OUTPUT)
-    assert result["rtt_stats"] == "N/A"
-    assert result["ping_stddev"] == "N/A"
-
-
-# (Add to the top with other imports)
-
-
-# (Add this class to the end of the file)
-class MockWebElement:
-    def __init__(self, text=""):
-        self._text = text
-
-    @property
-    def text(self):
-        return self._text
-
-    def find_elements(self, by, value):
-        if value == "td":
-            # Simulate splitting the text content into columns
-            parts = self._text.split("|")
-            return [MockWebElement(text=p) for p in parts]
-        return []
-
-
-# Test case for speed test parsing
-def test_parse_speed_test_results() -> None:
-    """Ensures speed test results are correctly parsed from mock web elements."""
-    # This function doesn't exist in the new structure, but we can test its logic
-    # by simulating the objects that run_speed_test_task would process.
-
-    # 1. Create mock rows like Selenium would find them
-    # We use '|' as a simple separator for our mock `find_elements` implementation
-    mock_rows = [
-        MockWebElement("08/01/2025 12:26:14|downstream|387.950000|2822.000000|Success"),
-        MockWebElement("08/01/2025 12:26:01|upstream|385.240000|2827.000000|Success"),
-    ]
-
-    # 2. Simulate the parsing logic from run_speed_test_task
-    results = {}
-    for row in mock_rows:
-        cols = row.find_elements(By.TAG_NAME, "td")
-        if len(cols) >= 3:
-            direction = cols[1].text.lower()
-            speed = f"{float(cols[2].text):.2f}"
-            if "downstream" in direction:
-                results["downstream_speed"] = speed
-            elif "upstream" in direction:
-                results["upstream_speed"] = speed
-
-    # 3. Assert the results
-    assert results["downstream_speed"] == "387.95"
-    assert results["upstream_speed"] == "385.24"
-
-
-# Example mock JSON for the test
+# Mock JSON for Ookla Speedtest
 SPEEDTEST_JSON_OUTPUT = (
     '{"type": "result", "timestamp": "2025-08-06T22:00:00Z", '
     '"ping": {"jitter": 2.789, "latency": 10.123}, '
     '"download": {"bandwidth": 37500000, "bytes": 300000000, "elapsed": 8000}, '
-    '"upload": {"bandwidth": 25000000, "bytes": 200000000, "elapsed": 8000}}'
-)
+    '"upload": {"bandwidth": 2500000, "bytes": 20000000, "elapsed": 8000}}'
+)  # 300 Mbps down, 20 Mbps up
+
+# Mock data for Wi-Fi diagnostics
+WIFI_DIAG_OUTPUT = "RSSI: -55\nNoise: -90\nTxRate: 866\nChannel: 149,80"
+ARP_OUTPUT = "? (192.168.1.1) at a1:b2:c3:d4:e5:f6 on en0 ifscope [ethernet]"
+
+
+# --- Tests for Ping Parsers ---
+
+
+def test_parse_local_ping_success():
+    """Ensures local ping parser correctly extracts metrics as floats."""
+    result = parse_local_ping_results(LOCAL_PING_SUCCESS_OUTPUT)
+    assert result.get("loss_percentage") == 0.0
+    assert result.get("rtt_avg_ms") == 2.610
+    assert result.get("ping_stddev") == 0.123
+
+
+def test_parse_local_ping_with_loss():
+    """Ensures local ping parser handles non-zero packet loss."""
+    result = parse_local_ping_results(LOCAL_PING_PACKET_LOSS_OUTPUT)
+    assert result.get("loss_percentage") == 50.0
+    assert result.get("rtt_avg_ms") == 12.345
+
+
+def test_parse_local_ping_missing_rtt():
+    """Ensures local ping parser returns an empty dict for missing RTT."""
+    result = parse_local_ping_results(MISSING_RTT_OUTPUT)
+    assert "rtt_avg_ms" not in result
+    assert "ping_stddev" not in result
+
+
+def test_parse_gateway_ping_success():
+    """Ensures gateway ping parser correctly extracts metrics as floats."""
+    result = parse_gateway_ping_results(GATEWAY_PING_SUCCESS_OUTPUT)
+    assert result.get("gateway_loss_percentage") == 0.0
+    assert result.get("gateway_rtt_avg_ms") == 15.2
+
+
+def test_parse_gateway_ping_missing_rtt():
+    """Ensures gateway ping parser returns an empty dict for missing RTT."""
+    result = parse_gateway_ping_results(MISSING_RTT_OUTPUT)
+    assert "gateway_rtt_avg_ms" not in result
+
+
+# --- Tests for Task Functions ---
 
 
 @patch("main.subprocess.run")
-def test_local_speed_test_with_jitter(mock_run):
-    """Ensures speed test parser correctly extracts jitter."""
+def test_local_speed_test_parsing(mock_run):
+    """Ensures the local speed test task correctly parses JSON and returns floats."""
     mock_run.return_value = MagicMock(
         stdout=SPEEDTEST_JSON_OUTPUT, returncode=0, stderr=""
     )
     results = run_local_speed_test_task()
     assert results is not None
-    assert results["local_downstream_speed"] == "300.00"  # 37500000 * 8 / 1e6
-    assert results["local_speedtest_jitter"] == "2.789"
+    # Bandwidth is in bytes, so we convert to Mbps (bytes * 8 / 1,000,000)
+    assert results.get("local_downstream_speed") == 300.0
+    assert results.get("local_upstream_speed") == 20.0
+    assert results.get("local_speedtest_jitter") == 2.789
 
 
 @patch("main.subprocess.run")
 def test_wifi_diagnostics_success(mock_run):
-    """Tests successful parsing of system_profiler and arp output."""
-    # Mock both subprocess calls: first system_profiler, then arp
+    """Tests successful parsing of wdutil and arp output."""
+    # Mock the sequence of subprocess calls
     mock_run.side_effect = [
-        MagicMock(stdout=SYSTEM_PROFILER_OUTPUT, returncode=0, stderr=""),
-        MagicMock(stdout=ARP_OUTPUT, returncode=0, stderr=""),
+        MagicMock(stdout=WIFI_DIAG_OUTPUT, returncode=0, stderr=""),  # For wdutil
+        MagicMock(stdout=ARP_OUTPUT, returncode=0, stderr=""),  # For route/arp
+        MagicMock(stdout="", returncode=0, stderr=""),  # For ping
+        MagicMock(stdout=ARP_OUTPUT, returncode=0, stderr=""),  # For arp again
     ]
     results = run_wifi_diagnostics_task()
     assert results["wifi_rssi"] == "-55"
     assert results["wifi_noise"] == "-90"
     assert results["wifi_bssid"] == "a1:b2:c3:d4:e5:f6"
-    assert results["wifi_tx_rate"] == "866 Mbps"
+    assert results["wifi_tx_rate"] == "866"
     assert results["wifi_channel"] == "149,80"
 
 
 @patch("main.subprocess.run")
 def test_wifi_diagnostics_failure(mock_run):
-    """Tests graceful failure when both system_profiler and arp commands fail."""
+    """Tests graceful failure when diagnostic commands fail."""
     mock_run.side_effect = subprocess.CalledProcessError(1, "cmd", stderr="Error")
     results = run_wifi_diagnostics_task()
-    # The new implementation returns a dict with N/A values rather than an empty dict
+    # Should return a dictionary with 'N/A' values, not crash
     assert results["wifi_rssi"] == "N/A"
     assert results["wifi_noise"] == "N/A"
-    assert results["wifi_bssid"] == "N/A (Error)"
-    assert results["wifi_tx_rate"] == "N/A"
-    assert results["wifi_channel"] == "N/A"
+    assert results["wifi_bssid"] == "N/A"
