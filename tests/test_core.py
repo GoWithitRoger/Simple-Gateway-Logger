@@ -102,11 +102,36 @@ def test_parse_gateway_ping_missing_rtt():
     assert "gateway_rtt_avg_ms" not in result
 
 
+def test_parse_local_ping_empty_input():
+    """Ensures the local ping parser handles empty string input gracefully."""
+    result = parse_local_ping_results("")
+    assert result == {}
+
+
+def test_parse_local_ping_garbage_input():
+    """Ensures the local ping parser handles random non-matching text."""
+    result = parse_local_ping_results("this is not valid ping output")
+    assert result == {}
+
+
+def test_parse_gateway_ping_empty_input():
+    """Ensures the gateway ping parser handles empty string input gracefully."""
+    result = parse_gateway_ping_results("")
+    assert result == {}
+
+
+def test_parse_gateway_ping_garbage_input():
+    """Ensures the gateway ping parser handles random non-matching text."""
+    result = parse_gateway_ping_results("some random text, not ping results")
+    assert result == {}
+
+
 # --- Tests for Task Functions ---
 
 
+@patch("main.os.path.exists", return_value=True)
 @patch("main.subprocess.run")
-def test_local_speed_test_parsing(mock_run):
+def test_local_speed_test_parsing(mock_run, mock_exists):
     """Ensures the local speed test task correctly parses JSON and returns floats."""
     mock_run.return_value = MagicMock(
         stdout=SPEEDTEST_JSON_OUTPUT, returncode=0, stderr=""
@@ -123,11 +148,12 @@ def test_local_speed_test_parsing(mock_run):
 def test_wifi_diagnostics_success(mock_run):
     """Tests successful parsing of wdutil and arp output."""
     # Mock the sequence of subprocess calls
+    route_output = "gateway: 192.168.1.1"
     mock_run.side_effect = [
         MagicMock(stdout=WIFI_DIAG_OUTPUT, returncode=0, stderr=""),  # For wdutil
-        MagicMock(stdout=ARP_OUTPUT, returncode=0, stderr=""),  # For route/arp
+        MagicMock(stdout=route_output, returncode=0, stderr=""),  # For route
         MagicMock(stdout="", returncode=0, stderr=""),  # For ping
-        MagicMock(stdout=ARP_OUTPUT, returncode=0, stderr=""),  # For arp again
+        MagicMock(stdout=ARP_OUTPUT, returncode=0, stderr=""),  # For arp
     ]
     results = run_wifi_diagnostics_task()
     assert results["wifi_rssi"] == "-55"
