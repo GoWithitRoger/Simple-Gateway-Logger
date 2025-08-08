@@ -283,9 +283,12 @@ def test_wifi_diagnostics_failure(mock_run):
 
 # Mock stats output from a successful flent run
 FLENT_STATS_OUTPUT = """
-Ping (ms) avg: 25.50
-TCP download avg (Mbit/s): 85.50
-TCP upload avg (Mbit/s): 18.20
+Ping (ms) avg:
+  Mean:        25.50 ms
+TCP download avg:
+  Mean:        85.50 Mbits/s
+TCP upload avg:
+  Mean:        18.20 Mbits/s
 """
 
 

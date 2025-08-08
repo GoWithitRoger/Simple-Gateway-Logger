@@ -402,16 +402,16 @@ def run_flent_test_task() -> Optional[Dict[str, str]]:
         def parse_flent_stats(text: str) -> Dict[str, str]:
             """Parses the text output of 'flent -f stats'."""
             results = {}
-            # Regex patterns to find the average values for ping, download, and upload.
+            # Regex to find the 'Mean' value within a block of text for a given metric.
             patterns = {
-                "flent_ping_ms": r"Ping \(ms\) avg:\s+([\d\.]+)",
-                "flent_dl_mbps": r"TCP download avg \(Mbit/s\):\s+([\d\.]+)",
-                "flent_ul_mbps": r"TCP upload avg \(Mbit/s\):\s+([\d\.]+)",
+                "flent_ping_ms": r"Ping \(ms\) avg:.*?Mean:\s+([\d\.]+)",
+                "flent_dl_mbps": r"TCP download avg:.*?Mean:\s+([\d\.]+)",
+                "flent_ul_mbps": r"TCP upload avg:.*?Mean:\s+([\d\.]+)",
             }
             for key, pattern in patterns.items():
-                match = re.search(pattern, text)
+                # re.DOTALL allows '.' to match newlines
+                match = re.search(pattern, text, re.DOTALL)
                 if match:
-                    # Format to two decimal places, consistent with other metrics.
                     results[key] = f"{float(match.group(1)):.2f}"
             return results
 
