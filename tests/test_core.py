@@ -51,13 +51,16 @@ PING google.com (142.250.191.174): 56 data bytes
 5 packets transmitted, 5 packets received, 0% packet loss
 """
 
-# Mock JSON for Ookla Speedtest
+# Mock JSON for Ookla Speedtest with Bufferbloat metrics
 SPEEDTEST_JSON_OUTPUT = (
-    '{"type": "result", "timestamp": "2025-08-06T22:00:00Z", '
-    '"ping": {"jitter": 2.789, "latency": 10.123}, '
-    '"download": {"bandwidth": 37500000, "bytes": 300000000, "elapsed": 8000}, '
-    '"upload": {"bandwidth": 2500000, "bytes": 20000000, "elapsed": 8000}}'
-)  # 300 Mbps down, 20 Mbps up
+    '{"type":"result","timestamp":"2023-11-20T12:00:00Z",'
+    '"ping":{"jitter":1.234,"latency":5.678,"low":4.5,"high":6.7},'
+    '"download":{"bandwidth":112233445,"bytes":123456789,"elapsed":9876,'
+    '"latency":{"iqm":25.123,"low":10.1,"high":50.5,"jitter":4.321}},'
+    '"upload":{"bandwidth":22334455,"bytes":23456789,"elapsed":9765,'
+    '"latency":{"iqm":35.456,"low":20.2,"high":60.6,"jitter":5.432}},'
+    '"packetLoss":0.5}'
+)
 
 # Mock data for Wi-Fi diagnostics
 WIFI_DIAG_OUTPUT = "RSSI: -55\nNoise: -90\nTxRate: 866\nChannel: 149,80"
@@ -131,17 +134,35 @@ def test_parse_gateway_ping_garbage_input():
 
 @patch("main.os.path.exists", return_value=True)
 @patch("main.subprocess.run")
-def test_local_speed_test_parsing(mock_run, mock_exists):
-    """Ensures the local speed test task correctly parses JSON and returns floats."""
+def test_run_local_speed_test_task_parsing(mock_run, mock_exists):
+    """
+    Ensures the speed test task correctly parses the rich JSON output,
+    formats the values into strings, and includes all bufferbloat metrics.
+    """
     mock_run.return_value = MagicMock(
         stdout=SPEEDTEST_JSON_OUTPUT, returncode=0, stderr=""
     )
     results = run_local_speed_test_task()
     assert results is not None
-    # Bandwidth is in bytes, so we convert to Mbps (bytes * 8 / 1,000,000)
-    assert results.get("local_downstream_speed") == 300.0
-    assert results.get("local_upstream_speed") == 20.0
-    assert results.get("local_speedtest_jitter") == 2.789
+    # Check that all keys are present
+    expected_keys = [
+        "local_downstream_speed", "local_upstream_speed", "local_speedtest_jitter",
+        "local_idle_latency_ms", "local_down_latency_ms", "local_up_latency_ms",
+        "local_packet_loss_pct"
+    ]
+    assert all(key in results for key in expected_keys)
+
+    # Check correct parsing and string formatting
+    # Download: 112233445 * 8 / 1,000,000 = 897.86756 Mbps
+    assert results["local_downstream_speed"] == "897.87"
+    # Upload: 22334455 * 8 / 1,000,000 = 178.67564 Mbps
+    assert results["local_upstream_speed"] == "178.68"
+    assert results["local_speedtest_jitter"] == "1.234"
+    assert results["local_idle_latency_ms"] == "5.678"
+    assert results["local_down_latency_ms"] == "25.123"
+    assert results["local_up_latency_ms"] == "35.456"
+    # Packet Loss: 0.5 -> 0.50%
+    assert results["local_packet_loss_pct"] == "50.00%"
 
 
 @patch("main.subprocess.run")

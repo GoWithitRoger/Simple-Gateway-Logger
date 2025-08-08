@@ -29,6 +29,10 @@ RUN_LOCAL_PING_TEST: bool = True
 RUN_LOCAL_SPEED_TEST: bool = True
 # Set to True to run a ping test from the local machine to the gateway itself.
 RUN_LOCAL_GATEWAY_PING_TEST: bool = True
+# How often the bufferbloat test runs using the Ookla CLI. A value of 10
+# means the test runs on the first execution and then every 10th time.
+# Set to 0 to disable.
+RUN_BUFFERBLOAT_TEST_INTERVAL: int = 10
 
 
 # --- Anomaly Detection Configuration ---

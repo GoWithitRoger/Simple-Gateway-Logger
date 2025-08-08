@@ -66,6 +66,7 @@ All configuration has been moved to the **`config.py`** file for easy editing.
 - `RUN_LOCAL_PING_TEST`: Set to `True` to run a ping test from your computer to the `PING_TARGET`.
 - `RUN_LOCAL_SPEED_TEST`: Set to `True` to run a speed test from your computer using the Ookla CLI.
 - `RUN_LOCAL_GATEWAY_PING_TEST`: Set to `True` to run a ping test from your computer to the gateway.
+- `RUN_BUFFERBLOAT_TEST_INTERVAL`: How often the bufferbloat test runs. A value of `10` means the test runs on the first execution and then every 10th time. Set to `0` to disable.
 
 ### Important: Handling the Device Access Code
 The gateway speed test requires your gateway's **Device Access Code** to log in. To store this securely, the script uses an environment variable.

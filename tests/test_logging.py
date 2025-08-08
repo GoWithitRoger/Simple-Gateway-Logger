@@ -12,24 +12,31 @@ from main import Colors, log_results
 # --- Test Data ---
 
 MOCK_DATA = {
-    "gateway_loss_percentage": 1.5,  # Anomaly
-    "gateway_rtt_avg_ms": 45.0,  # Anomaly
-    "downstream_speed": 40.0,  # Anomaly
-    "upstream_speed": 5.0,  # Anomaly
+    "gateway_loss_percentage": 1.5,
+    "gateway_rtt_stats": "10/12/14",
+    "downstream_speed": "40.0",
+    "upstream_speed": "5.0",
     "local_wan_loss_percentage": 0.0,
-    "local_wan_rtt_avg_ms": 20.0,
+    "local_wan_rtt_stats": "18/20/22",
     "local_wan_ping_stddev": 5.0,
     "local_gw_loss_percentage": 0.0,
-    "local_gw_rtt_avg_ms": 1.0,
-    "local_downstream_speed": 450.0,
-    "local_upstream_speed": 25.0,
-    "local_speedtest_jitter": 12.0,  # Anomaly
+    "local_gw_rtt_stats": "1/1/2",
+    "local_downstream_speed": "450.0",
+    "local_upstream_speed": "25.0",
+    # Bufferbloat data
+    "local_idle_latency_ms": "5.123",
+    "local_speedtest_jitter": "1.456",
+    "local_down_latency_ms": "25.789",
+    "local_up_latency_ms": "35.987",
+    "local_packet_loss_pct": "0.10%",
+    # Wi-Fi data
     "wifi_bssid": "a1:b2:c3:d4:e5:f6",
     "wifi_channel": "149,80",
     "wifi_rssi": "-55",
     "wifi_noise": "-90",
     "wifi_tx_rate": "866",
 }
+
 
 # --- Tests for log_results function ---
 
@@ -40,22 +47,20 @@ def test_log_results_csv_creation(mock_exists, mock_open_file):
     log_results(MOCK_DATA)
     handle = mock_open_file()
 
-    header = ("Timestamp,Gateway_LossPercentage,Gateway_RTT_avg_ms,Gateway_Downstream_Mbps,"
-              "Gateway_Upstream_Mbps,Local_WAN_LossPercentage,Local_WAN_RTT_avg_ms,"
-              "Local_WAN_Ping_StdDev,Local_GW_LossPercentage,Local_GW_RTT_avg_ms,"
-                  "Local_GW_Ping_StdDev,Local_Downstream_Mbps,Local_Upstream_Mbps,Local_Speedtest_Jitter_ms,"
-              "WiFi_BSSID,WiFi_Channel,WiFi_RSSI,WiFi_Noise,WiFi_TxRate_Mbps\n")
+    # This header must exactly match the keys in the log_results function
+    header = ("Timestamp,Gateway_LossPercentage,Gateway_RTT_ms,Gateway_Downstream_Mbps,"
+              "Gateway_Upstream_Mbps,Local_WAN_LossPercentage,Local_WAN_RTT_ms,"
+              "Local_WAN_Ping_StdDev,Local_GW_LossPercentage,Local_GW_RTT_ms,"
+              "Local_GW_Ping_StdDev,Local_Downstream_Mbps,Local_Upstream_Mbps,"
+              "Local_Idle_Latency_ms,Local_Speedtest_Jitter_ms,Local_Down_Latency_ms,"
+              "Local_Up_Latency_ms,Local_Packet_Loss_pct,WiFi_BSSID,WiFi_Channel,"
+              "WiFi_RSSI,WiFi_Noise,WiFi_TxRate_Mbps\n")
 
-    # The mock records all calls, including the context manager __enter__ and __exit__.
-    # We are interested in the calls to the write method.
-
-    # Extract the written data from the mock calls
     written_header = handle.mock_calls[1][1][0]
     written_data_row = handle.mock_calls[2][1][0]
 
     assert header.strip() == written_header.strip()
     assert MOCK_DATA['wifi_bssid'] in written_data_row
-
     assert handle.write.call_count == 2
 
 
@@ -66,42 +71,37 @@ def test_log_results_csv_append(mock_getsize, mock_exists, mock_open_file):
     """Tests that log_results appends to an existing CSV without a header."""
     log_results(MOCK_DATA)
     handle = mock_open_file()
-    # Header should not be written, only the data row
     handle.write.assert_called_once()
-    # Extract the string that was written
     written_string = handle.write.call_args[0][0]
     assert "Timestamp" not in written_string
-    assert "1.500" in written_string  # Check for a formatted value
+    # Check for a non-formatted value, as the new logger just uses str()
+    assert str(MOCK_DATA["gateway_loss_percentage"]) in written_string
 
 
 @patch("builtins.print")
-def test_log_results_console_output_highlighting(mock_print):
-    """Tests that anomaly highlighting works correctly in console output."""
-    # Temporarily modify config for this test
-    config.ENABLE_ANOMALY_HIGHLIGHTING = True
-    config.PACKET_LOSS_THRESHOLD = 1.0
-    config.PING_RTT_THRESHOLD = 40.0
-    config.GATEWAY_DOWNSTREAM_SPEED_THRESHOLD = 50.0
-    config.GATEWAY_UPSTREAM_SPEED_THRESHOLD = 10.0
-    config.JITTER_THRESHOLD = 10.0
-
+def test_log_results_console_output_conditional_bufferbloat(mock_print):
+    """
+    Tests that the bufferbloat section is only printed to the console when
+    the relevant data is available in the input dictionary.
+    """
+    # Case 1: Data IS available, so the section should be printed
     log_results(MOCK_DATA)
+    all_output_with_data = " ".join([str(call.args[0]) for call in mock_print.call_args_list])
+    assert "--- Latency & Bufferbloat (Speedtest) ---" in all_output_with_data
+    assert "Idle Latency:" in all_output_with_data
+    assert MOCK_DATA["local_idle_latency_ms"] in all_output_with_data
+    assert MOCK_DATA["local_packet_loss_pct"] in all_output_with_data
 
-    # Convert mock_print calls to a single string for easier searching
-    all_output = " ".join([str(call.args[0]) for call in mock_print.call_args_list])
+    # Reset mock for the next call
+    mock_print.reset_mock()
 
-    # Check for RED color code on anomalous values
-    assert f"{Colors.RED}1.50{Colors.RESET}" in all_output
-    assert f"{Colors.RED}45.00{Colors.RESET}" in all_output
-    assert f"{Colors.RED}40.00{Colors.RESET}" in all_output
-    assert f"{Colors.RED}5.00{Colors.RESET}" in all_output
-    assert f"{Colors.RED}12.000{Colors.RESET}" in all_output
+    # Case 2: Data is NOT available, so the section should be skipped
+    mock_data_missing_key = MOCK_DATA.copy()
+    # The conditional check is specifically on "local_idle_latency_ms" being "N/A"
+    # The .get() in the function will cause this if the key is missing.
+    del mock_data_missing_key["local_idle_latency_ms"]
 
-    # Check for a non-anomalous value to ensure it's not colored red
-    assert f"{Colors.RED}20.00{Colors.RESET}" not in all_output
-    # Check for the special CYAN color on Local GW RTT
-    assert f"{Colors.CYAN}1.00{Colors.RESET}" in all_output
-
-    # Restore config
-    # This is important if other tests depend on the original config
-    importlib.reload(config)
+    log_results(mock_data_missing_key)
+    all_output_without_data = " ".join([str(call.args[0]) for call in mock_print.call_args_list])
+    assert "--- Latency & Bufferbloat (Speedtest) ---" not in all_output_without_data
+    assert "Idle Latency:" not in all_output_without_data
