@@ -127,6 +127,10 @@ def log_results(all_data: dict[str, str | float | int]) -> None:
         "WiFi_RSSI": all_data.get("wifi_rssi", "N/A"),
         "WiFi_Noise": all_data.get("wifi_noise", "N/A"),
         "WiFi_TxRate_Mbps": all_data.get("wifi_tx_rate", "N/A"),
+        # Flent bufferbloat metrics
+        "Flent_Ping_ms": all_data.get("flent_ping_ms", "N/A"),
+        "Flent_DL_Mbps": all_data.get("flent_dl_mbps", "N/A"),
+        "Flent_UL_Mbps": all_data.get("flent_ul_mbps", "N/A"),
     }
     header = "Timestamp," + ",".join(data_points.keys()) + "\n"
     log_entry = timestamp + "," + ",".join(str(v) for v in data_points.values()) + "\n"
@@ -156,6 +160,13 @@ def log_results(all_data: dict[str, str | float | int]) -> None:
     print(
         f"  Speedtest Jitter:           {data_points['Local_Speedtest_Jitter_ms']} ms"
     )
+
+    # Only print the Flent section if data is available
+    if data_points["Flent_Ping_ms"] != "N/A":
+        print("\n--- Bufferbloat Test Results (Flent) ---")
+        print(f"  Average Ping (Loaded):      {data_points['Flent_Ping_ms']} ms")
+        print(f"  Average Download (Loaded):  {data_points['Flent_DL_Mbps']} Mbps")
+        print(f"  Average Upload (Loaded):    {data_points['Flent_UL_Mbps']} Mbps")
 
     print("\n--- Wi-Fi Diagnostics ---")
     print(f"  Connected AP (BSSID):       {data_points['WiFi_BSSID']}")
@@ -367,6 +378,67 @@ def run_local_speed_test_task() -> Optional[Dict[str, str]]:
         return None
 
 
+def run_flent_test_task() -> Optional[Dict[str, str]]:
+    """Runs a flent test to measure bufferbloat."""
+    print("Running flent test for bufferbloat...")
+    try:
+        # Use the rrul_be (Real-Time Response Under Load - Background Traffic)
+        # test, which is a good general-purpose bufferbloat test.
+        # --socket-stats enables additional data collection.
+        # --test-parameter=server=automatic uses flent's auto-server feature.
+        # --json-output sends structured JSON data to stdout.
+        command = [
+            "flent",
+            "rrul_be",
+            "--socket-stats",
+            "--test-parameter=server=automatic",
+            "--json-output",
+            "-",  # Directs JSON output to stdout
+        ]
+
+        process = subprocess.run(
+            command, capture_output=True, text=True, timeout=180, check=True
+        )
+
+        results = json.loads(process.stdout)
+
+        # Extract key metrics from the detailed JSON output. We focus on the
+        # aggregate statistics for ping latency, and download/upload throughput.
+        ping_avg = results.get("pings_all", {}).get("avg", 0.0)
+        dl_avg = results.get("download_streams_all", {}).get("avg", 0.0)
+        ul_avg = results.get("upload_streams_all", {}).get("avg", 0.0)
+
+        print("Flent test complete.")
+        return {
+            "flent_ping_ms": f"{ping_avg:.2f}",
+            "flent_dl_mbps": f"{dl_avg:.2f}",
+            "flent_ul_mbps": f"{ul_avg:.2f}",
+        }
+
+    except FileNotFoundError:
+        print(
+            "Error: 'flent' command not found. "
+            "Please ensure it's installed and in your system's PATH."
+        )
+        return None
+    except subprocess.CalledProcessError as e:
+        print(f"Error: The 'flent' command failed with return code {e.returncode}.")
+        print(f"Stderr: {e.stderr}")
+        return None
+    except subprocess.TimeoutExpired:
+        print("Error: The flent test command timed out after 180 seconds.")
+        return None
+    except (json.JSONDecodeError, KeyError) as e:
+        print(f"Error: Could not parse JSON output from 'flent' command. Error: {e}")
+        # To aid debugging, print the raw output if parsing fails
+        if "process" in locals() and process.stdout:
+            print(f"--- Raw STDOUT ---\n{process.stdout}\n--------------------")
+        return None
+    except Exception as e:
+        print(f"An unexpected error occurred during the flent test: {e}")
+        return None
+
+
 def run_wifi_diagnostics_task() -> dict[str, str]:
     """
     Uses a hybrid approach: wdutil for live Wi-Fi stats (signal, etc.) and
@@ -471,6 +543,17 @@ def perform_checks() -> None:
         local_speed_results = run_local_speed_test_task()
         if local_speed_results:
             master_results.update(local_speed_results)
+
+    # Conditionally run the flent test based on the interval.
+    # The test runs on the very first execution (run_counter == 1) and
+    # subsequently when the counter is a multiple of the interval.
+    if config.RUN_FLENT_TEST_INTERVAL > 0 and (
+        run_counter == 1
+        or run_counter % config.RUN_FLENT_TEST_INTERVAL == 0
+    ):
+        flent_results = run_flent_test_task()
+        if flent_results:
+            master_results.update(flent_results)
 
     # --- Run Gateway Tests (Selenium Required) ---
     should_run_gateway_speed_test = (

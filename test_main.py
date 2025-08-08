@@ -13,6 +13,7 @@ from selenium.webdriver.common.by import By
 # Import the functions to test
 from main import (
     parse_local_ping_results,
+    run_flent_test_task,
     run_local_speed_test_task,
     run_wifi_diagnostics_task,
 )
@@ -223,8 +224,9 @@ SPEEDTEST_JSON_OUTPUT = (
 )
 
 
+@patch("main.os.path.exists", return_value=True)
 @patch("main.subprocess.run")
-def test_local_speed_test_with_jitter(mock_run):
+def test_local_speed_test_with_jitter(mock_run, mock_exists):
     """Ensures speed test parser correctly extracts jitter."""
     mock_run.return_value = MagicMock(
         stdout=SPEEDTEST_JSON_OUTPUT, returncode=0, stderr=""
@@ -237,18 +239,29 @@ def test_local_speed_test_with_jitter(mock_run):
 
 @patch("main.subprocess.run")
 def test_wifi_diagnostics_success(mock_run):
-    """Tests successful parsing of system_profiler and arp output."""
-    # Mock both subprocess calls: first system_profiler, then arp
+    """Tests successful parsing of wdutil and arp output."""
+    # Mock the subprocess calls in the order they appear in the function
     mock_run.side_effect = [
-        MagicMock(stdout=SYSTEM_PROFILER_OUTPUT, returncode=0, stderr=""),
-        MagicMock(stdout=ARP_OUTPUT, returncode=0, stderr=""),
+        # sudo wdutil info
+        MagicMock(stdout="""
+            RSSI: -55
+            Noise: -90
+            TxRate: 866
+            Channel: 149
+        """, returncode=0, stderr=""),
+        # route -n get default
+        MagicMock(stdout="   gateway: 192.168.1.254", returncode=0, stderr=""),
+        # ping -c 1 192.168.1.254
+        MagicMock(stdout="", returncode=0, stderr=""),
+        # arp -n 192.168.1.254
+        MagicMock(stdout="? (192.168.1.254) at a1:b2:c3:d4:e5:f6 on en0 ifscope [ethernet]", returncode=0, stderr=""),
     ]
     results = run_wifi_diagnostics_task()
     assert results["wifi_rssi"] == "-55"
     assert results["wifi_noise"] == "-90"
+    assert results["wifi_tx_rate"] == "866"
+    assert results["wifi_channel"] == "149"
     assert results["wifi_bssid"] == "a1:b2:c3:d4:e5:f6"
-    assert results["wifi_tx_rate"] == "866 Mbps"
-    assert results["wifi_channel"] == "149,80"
 
 
 @patch("main.subprocess.run")
@@ -259,6 +272,46 @@ def test_wifi_diagnostics_failure(mock_run):
     # The new implementation returns a dict with N/A values rather than an empty dict
     assert results["wifi_rssi"] == "N/A"
     assert results["wifi_noise"] == "N/A"
-    assert results["wifi_bssid"] == "N/A (Error)"
+    assert results["wifi_bssid"] == "N/A"
     assert results["wifi_tx_rate"] == "N/A"
     assert results["wifi_channel"] == "N/A"
+
+
+# Mock JSON output from a successful flent run
+FLENT_JSON_OUTPUT = """
+{
+    "pings_all": { "avg": 25.5, "min": 10.1, "max": 40.2, "len": 100 },
+    "download_streams_all": { "avg": 85.5, "sum": 855.0 },
+    "upload_streams_all": { "avg": 18.2, "sum": 182.0 }
+}
+"""
+
+
+@patch("main.subprocess.run")
+def test_run_flent_test_task_success(mock_run):
+    """Tests the flent task function with a successful, mocked subprocess run."""
+    # Configure the mock to return a successful process with the sample JSON
+    mock_run.return_value = MagicMock(
+        stdout=FLENT_JSON_OUTPUT, returncode=0, stderr=""
+    )
+
+    results = run_flent_test_task()
+
+    # Assert that the results are parsed correctly
+    assert results is not None
+    assert results["flent_ping_ms"] == "25.50"
+    assert results["flent_dl_mbps"] == "85.50"
+    assert results["flent_ul_mbps"] == "18.20"
+
+    # Verify that subprocess.run was called with the expected command
+    expected_command = [
+        "flent",
+        "rrul_be",
+        "--socket-stats",
+        "--test-parameter=server=automatic",
+        "--json-output",
+        "-",
+    ]
+    mock_run.assert_called_once_with(
+        expected_command, capture_output=True, text=True, timeout=180, check=True
+    )
