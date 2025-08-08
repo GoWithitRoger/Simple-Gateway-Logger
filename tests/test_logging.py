@@ -1,15 +1,13 @@
+import importlib
 import os
 import sys
-from unittest.mock import MagicMock, patch, mock_open, call
-import importlib
-
-import pytest
+from unittest.mock import mock_open, patch
 
 # Ensure the main module can be imported
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from main import log_results, Colors
 import config
+from main import Colors, log_results
 
 # --- Test Data ---
 

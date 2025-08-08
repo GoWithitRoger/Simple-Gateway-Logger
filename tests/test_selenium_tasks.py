@@ -4,7 +4,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from selenium.common.exceptions import TimeoutException
-from selenium.webdriver.common.by import By
 
 # Ensure the main module can be imported
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -81,7 +80,11 @@ def test_speed_test_task_success(mock_wait, mock_driver):
     mock_speed_col_down = MagicMock()
     mock_speed_col_down.text = "123.45"
     mock_row_down = MagicMock()
-    mock_row_down.find_elements.return_value = [MagicMock(), mock_downstream_col, mock_speed_col_down]
+    mock_row_down.find_elements.return_value = [
+        MagicMock(), 
+        mock_downstream_col, 
+        mock_speed_col_down
+    ]
     mock_upstream_col = MagicMock()
     mock_upstream_col.text = "Upstream"
     mock_speed_col_up = MagicMock()

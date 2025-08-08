@@ -1,15 +1,15 @@
 import os
 import sys
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 # Ensure the main module can be imported
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from main import perform_checks
-import main as main_module
 import config as config_module
+import main as main_module
+from main import perform_checks
 
 # --- Mocks for all task functions ---
 

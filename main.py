@@ -174,45 +174,98 @@ def log_results(all_data: dict[str, str | float | int | None]) -> None:
 
     # --- Print to Console ---
     print("\n--- Gateway Test Results ---")
-    print(
-        f"  Packet Loss:                {format_value(data_points['Gateway_LossPercentage'], '%', config.PACKET_LOSS_THRESHOLD)}"
+    loss_pct = format_value(
+        data_points['Gateway_LossPercentage'], 
+        '%', 
+        config.PACKET_LOSS_THRESHOLD
     )
-    print(
-        f"  WAN RTT (avg):              {format_value(data_points['Gateway_RTT_avg_ms'], 'ms', config.PING_RTT_THRESHOLD)}"
+    print(f"  Packet Loss:                {loss_pct}")
+    
+    rtt_avg = format_value(
+        data_points['Gateway_RTT_avg_ms'], 
+        'ms', 
+        config.PING_RTT_THRESHOLD
     )
-    print(
-        f"  Downstream Speed:           {format_value(data_points['Gateway_Downstream_Mbps'], 'Mbps', config.GATEWAY_DOWNSTREAM_SPEED_THRESHOLD, 'less')}"
+    print(f"  WAN RTT (avg):              {rtt_avg}")
+    
+    down_speed = format_value(
+        data_points['Gateway_Downstream_Mbps'], 
+        'Mbps', 
+        config.GATEWAY_DOWNSTREAM_SPEED_THRESHOLD, 
+        'less'
     )
-    print(
-        f"  Upstream Speed:             {format_value(data_points['Gateway_Upstream_Mbps'], 'Mbps', config.GATEWAY_UPSTREAM_SPEED_THRESHOLD, 'less')}"
+    print(f"  Downstream Speed:           {down_speed}")
+    
+    up_speed = format_value(
+        data_points['Gateway_Upstream_Mbps'], 
+        'Mbps', 
+        config.GATEWAY_UPSTREAM_SPEED_THRESHOLD, 
+        'less'
     )
+    print(f"  Upstream Speed:             {up_speed}")
 
     print("\n--- Local Machine Test Results ---")
-    print(
-        f"  WAN Packet Loss:            {format_value(data_points['Local_WAN_LossPercentage'], '%', config.PACKET_LOSS_THRESHOLD)}"
+    wan_loss = format_value(
+        data_points['Local_WAN_LossPercentage'], 
+        '%', 
+        config.PACKET_LOSS_THRESHOLD
     )
-    print(
-        f"  WAN RTT (avg):              {format_value(data_points['Local_WAN_RTT_avg_ms'], 'ms', config.PING_RTT_THRESHOLD)}"
+    print(f"  WAN Packet Loss:            {wan_loss}")
+    
+    wan_rtt = format_value(
+        data_points['Local_WAN_RTT_avg_ms'], 
+        'ms', 
+        config.PING_RTT_THRESHOLD
     )
-    print(
-        f"  Ping Jitter (StdDev):       {format_value(data_points['Local_WAN_Ping_StdDev'], 'ms', config.JITTER_THRESHOLD, precision=3)}"
+    print(f"  WAN RTT (avg):              {wan_rtt}")
+    
+    jitter = format_value(
+        data_points['Local_WAN_Ping_StdDev'], 
+        'ms', 
+        config.JITTER_THRESHOLD, 
+        precision=3
     )
-    print(
-        f"  Gateway Packet Loss:        {format_value(data_points['Local_GW_LossPercentage'], '%', config.PACKET_LOSS_THRESHOLD)}"
+    print(f"  Ping Jitter (StdDev):       {jitter}")
+    
+    gw_loss = format_value(
+        data_points['Local_GW_LossPercentage'], 
+        '%', 
+        config.PACKET_LOSS_THRESHOLD
     )
+    print(f"  Gateway Packet Loss:        {gw_loss}")
+    
     # Special color for Local GW RTT
-    print(
-        f"  Gateway RTT (avg):          {format_value(data_points['Local_GW_RTT_avg_ms'], 'ms', config.PING_RTT_THRESHOLD, default_color=Colors.CYAN)}"
+    gw_rtt = format_value(
+        data_points['Local_GW_RTT_avg_ms'], 
+        'ms', 
+        config.PING_RTT_THRESHOLD, 
+        default_color=Colors.CYAN
     )
-    print(
-        f"  Downstream Speed:           {format_value(data_points['Local_Downstream_Mbps'], 'Mbps', config.LOCAL_DOWNSTREAM_SPEED_THRESHOLD, 'less')}"
+    print(f"  Gateway RTT (avg):          {gw_rtt}")
+    
+    local_down = format_value(
+        data_points['Local_Downstream_Mbps'], 
+        'Mbps', 
+        config.LOCAL_DOWNSTREAM_SPEED_THRESHOLD, 
+        'less'
     )
-    print(
-        f"  Upstream Speed:             {format_value(data_points['Local_Upstream_Mbps'], 'Mbps', config.LOCAL_UPSTREAM_SPEED_THRESHOLD, 'less')}"
+    print(f"  Downstream Speed:           {local_down}")
+    
+    local_up = format_value(
+        data_points['Local_Upstream_Mbps'], 
+        'Mbps', 
+        config.LOCAL_UPSTREAM_SPEED_THRESHOLD, 
+        'less'
     )
-    print(
-        f"  Speedtest Jitter:           {format_value(data_points['Local_Speedtest_Jitter_ms'], 'ms', config.JITTER_THRESHOLD, precision=3)}"
+    print(f"  Upstream Speed:             {local_up}")
+    
+    speed_jitter = format_value(
+        data_points['Local_Speedtest_Jitter_ms'], 
+        'ms', 
+        config.JITTER_THRESHOLD, 
+        precision=3
     )
+    print(f"  Speedtest Jitter:           {speed_jitter}")
 
     print("\n--- Wi-Fi Diagnostics ---")
     print(f"  Connected AP (BSSID):       {data_points['WiFi_BSSID']}")
