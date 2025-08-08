@@ -42,11 +42,11 @@ PACKET_LOSS_THRESHOLD: float = 0.0
 # Any ping RTT (average) strictly greater than this value (in ms) is an anomaly.
 PING_RTT_THRESHOLD: float = 30.0
 # Any jitter measurement strictly greater than this value (in ms) is an anomaly.
-JITTER_THRESHOLD: float = 10.0
+JITTER_THRESHOLD: float = 5.0
 
 # --- Speed Test Thresholds (in Mbps) ---
 # Set separate thresholds for speed tests. Anomalies are values strictly LESS than these.
-LOCAL_DOWNSTREAM_SPEED_THRESHOLD: float = 50.0
-LOCAL_UPSTREAM_SPEED_THRESHOLD: float = 10.0
-GATEWAY_DOWNSTREAM_SPEED_THRESHOLD: float = 50.0
-GATEWAY_UPSTREAM_SPEED_THRESHOLD: float = 10.0
+LOCAL_DOWNSTREAM_SPEED_THRESHOLD: float = 225.0
+LOCAL_UPSTREAM_SPEED_THRESHOLD: float = 225.0
+GATEWAY_DOWNSTREAM_SPEED_THRESHOLD: float = 300.0
+GATEWAY_UPSTREAM_SPEED_THRESHOLD: float = 300.0
