@@ -2,7 +2,8 @@
 # dependencies = [
 #   "schedule>=1.2.2,<2.0.0",
 #   "selenium>=4.18.0,<5.0.0",
-#   "python-dotenv>=1.0.1"
+#   "python-dotenv>=1.0.1",
+#   "flent>=2.2.0",
 # ]
 # ///
 # main.py
