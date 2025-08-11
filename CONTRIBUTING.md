@@ -51,6 +51,7 @@ import requests
 3. Ensure all checks pass locally before opening a Pull Request:
 
     - `uv run ruff check --fix . && uv run ruff format .`
+      - (see [pyproject.toml](pyproject.toml) for ruff criteria)
     - `uv run ty check`
     - `uv run pytest`
 

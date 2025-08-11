@@ -133,9 +133,7 @@ def test_parse_gateway_ping_garbage_input():
 @patch("main.subprocess.run")
 def test_local_speed_test_parsing(mock_run, mock_exists):
     """Ensures the local speed test task correctly parses JSON and returns floats."""
-    mock_run.return_value = MagicMock(
-        stdout=SPEEDTEST_JSON_OUTPUT, returncode=0, stderr=""
-    )
+    mock_run.return_value = MagicMock(stdout=SPEEDTEST_JSON_OUTPUT, returncode=0, stderr="")
     results = run_local_speed_test_task()
     assert results is not None
     # Bandwidth is in bytes, so we convert to Mbps (bytes * 8 / 1,000,000)

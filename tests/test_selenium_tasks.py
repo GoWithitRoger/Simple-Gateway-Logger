@@ -12,6 +12,7 @@ from main import run_ping_test_task, run_speed_test_task
 
 # --- Fixtures ---
 
+
 @pytest.fixture
 def mock_driver():
     """Provides a mock Selenium WebDriver object."""
@@ -21,7 +22,9 @@ def mock_driver():
     driver.find_elements.return_value = [MagicMock(), MagicMock()]
     return driver
 
+
 # --- Tests for run_ping_test_task ---
+
 
 @patch("main.time.sleep")
 @patch("main.WebDriverWait")
@@ -53,6 +56,7 @@ def test_ping_task_success(mock_wait, mock_sleep, mock_driver):
     assert results["gateway_loss_percentage"] == 0.0
     assert results["gateway_rtt_avg_ms"] == 15.2
 
+
 @patch("main.time.sleep")
 @patch("main.WebDriverWait")
 def test_ping_task_timeout_exception(mock_wait, mock_sleep, mock_driver):
@@ -60,6 +64,7 @@ def test_ping_task_timeout_exception(mock_wait, mock_sleep, mock_driver):
     mock_wait.return_value.until.side_effect = TimeoutException("Element not found")
     results = run_ping_test_task(mock_driver)
     assert results is None
+
 
 @patch("main.time.sleep")
 def test_ping_task_empty_results(mock_sleep, mock_driver):
@@ -71,7 +76,9 @@ def test_ping_task_empty_results(mock_sleep, mock_driver):
     results = run_ping_test_task(mock_driver)
     assert results is None
 
+
 # --- Tests for run_speed_test_task ---
+
 
 @patch("main.time.sleep")
 @patch("main.WebDriverWait")
@@ -85,9 +92,9 @@ def test_speed_test_task_success(mock_wait, mock_sleep, mock_driver):
     mock_speed_col_down.text = "123.45"
     mock_row_down = MagicMock()
     mock_row_down.find_elements.return_value = [
-        MagicMock(), 
-        mock_downstream_col, 
-        mock_speed_col_down
+        MagicMock(),
+        mock_downstream_col,
+        mock_speed_col_down,
     ]
     mock_upstream_col = MagicMock()
     mock_upstream_col.text = "Upstream"
@@ -98,13 +105,13 @@ def test_speed_test_task_success(mock_wait, mock_sleep, mock_driver):
     mock_table = MagicMock()
     mock_table.find_elements.return_value = [mock_row_down, mock_row_up]
 
-    mock_driver.find_element.return_value = MagicMock() # for run button
+    mock_driver.find_element.return_value = MagicMock()  # for run button
 
     mock_wait.return_value.until.side_effect = [
-        TimeoutException("No password field"), # First wait for password fails
-        MagicMock(), # Second wait for run button succeeds
-        MagicMock(), # Third wait for run button to be clickable after test
-        mock_table, # Fourth wait for results table
+        TimeoutException("No password field"),  # First wait for password fails
+        MagicMock(),  # Second wait for run button succeeds
+        MagicMock(),  # Third wait for run button to be clickable after test
+        mock_table,  # Fourth wait for results table
     ]
 
     results = run_speed_test_task(mock_driver, "test_code")
@@ -114,6 +121,7 @@ def test_speed_test_task_success(mock_wait, mock_sleep, mock_driver):
     assert results["downstream_speed"] == 123.45
     assert results["upstream_speed"] == 67.89
 
+
 @patch("main.time.sleep")
 @patch("main.WebDriverWait")
 def test_speed_test_task_login_required(mock_wait, mock_sleep, mock_driver):
@@ -122,14 +130,14 @@ def test_speed_test_task_login_required(mock_wait, mock_sleep, mock_driver):
     mock_continue_button = MagicMock()
     mock_run_button = MagicMock()
     mock_results_table = MagicMock()
-    mock_results_table.find_elements.return_value = [] # No results
+    mock_results_table.find_elements.return_value = []  # No results
 
     # Simulate the sequence of waits
     mock_wait.return_value.until.side_effect = [
-        mock_password_input, # First wait finds password field
-        mock_run_button, # Second wait finds run button
-        mock_run_button, # Third wait for button to be clickable after test
-        mock_results_table, # Fourth wait for results table
+        mock_password_input,  # First wait finds password field
+        mock_run_button,  # Second wait finds run button
+        mock_run_button,  # Third wait for button to be clickable after test
+        mock_results_table,  # Fourth wait for results table
     ]
     mock_driver.find_element.return_value = mock_continue_button
 
@@ -138,6 +146,7 @@ def test_speed_test_task_login_required(mock_wait, mock_sleep, mock_driver):
     mock_password_input.send_keys.assert_called_with("test_code")
     mock_continue_button.click.assert_called_once()
     mock_run_button.click.assert_called_once()
+
 
 @patch("main.time.sleep")
 @patch("main.WebDriverWait")
