@@ -15,7 +15,7 @@ import re
 import subprocess
 import time
 from datetime import datetime
-from typing import Dict, Optional
+from typing import ClassVar, Literal, Mapping, Optional, TypedDict
 
 # Third-party imports
 import schedule
@@ -33,16 +33,54 @@ from selenium.webdriver.support.ui import WebDriverWait
 import config
 
 
+# --- Typing Models ---
+class GatewayPingResults(TypedDict, total=False):
+    """Structured results from gateway ping parsing."""
+
+    gateway_loss_percentage: float
+    gateway_rtt_avg_ms: float
+
+
+class LocalPingResults(TypedDict, total=False):
+    """Structured results from local ping parsing."""
+
+    loss_percentage: float
+    rtt_avg_ms: float
+    ping_stddev: float
+
+
+class SpeedResults(TypedDict, total=False):
+    """Structured results from speed tests (gateway or local)."""
+
+    # From gateway speed test
+    downstream_speed: float
+    upstream_speed: float
+    # From local speed test
+    local_downstream_speed: float
+    local_upstream_speed: float
+    local_speedtest_jitter: float
+
+
+class WifiDiagnostics(TypedDict, total=False):
+    """Structured Wi-Fi diagnostics values from local system utilities."""
+
+    wifi_rssi: str
+    wifi_noise: str
+    wifi_tx_rate: str
+    wifi_channel: str
+    wifi_bssid: str
+
+
 # --- ANSI Color Codes ---
 class Colors:
     """A class to hold ANSI color codes for terminal output."""
 
-    RED = "\033[91m"
-    GREEN = "\033[92m"
-    YELLOW = "\033[93m"
-    CYAN = "\033[96m"
-    RESET = "\033[0m"
-    BOLD = "\033[1m"
+    RED: ClassVar[str] = "\033[91m"
+    GREEN: ClassVar[str] = "\033[92m"
+    YELLOW: ClassVar[str] = "\033[93m"
+    CYAN: ClassVar[str] = "\033[96m"
+    RESET: ClassVar[str] = "\033[0m"
+    BOLD: ClassVar[str] = "\033[1m"
 
 
 # Load environment variables
@@ -64,9 +102,9 @@ def get_access_code() -> str:
     return entered_code
 
 
-def parse_gateway_ping_results(full_results: str) -> dict[str, float]:
+def parse_gateway_ping_results(full_results: str) -> GatewayPingResults:
     """Parses the full ping output from the GATEWAY, returning numerical values."""
-    results: dict[str, float] = {}
+    results: GatewayPingResults = {}  # Changed for strict typing
     loss_match = re.search(r"(\d+)% packet loss", full_results)
     if loss_match:
         results["gateway_loss_percentage"] = float(loss_match.group(1))
@@ -75,25 +113,22 @@ def parse_gateway_ping_results(full_results: str) -> dict[str, float]:
     if rtt_match:
         rtt_parts = rtt_match.group(1).split("/")
         if len(rtt_parts) >= 3:
-            # Extract the 'avg' value
             results["gateway_rtt_avg_ms"] = float(rtt_parts[1])
 
     return results
 
 
-def parse_local_ping_results(ping_output: str) -> dict[str, float]:
+def parse_local_ping_results(ping_output: str) -> LocalPingResults:
     """
     Parses local ping output, returning numerical values for key metrics.
     Focuses on packet loss percentage, average RTT, and standard deviation.
     """
-    results: dict[str, float] = {}
+    results: LocalPingResults = {}  # Changed for strict typing
     loss_match = re.search(r"(\d+(?:\.\d+)?)% packet loss", ping_output)
     if loss_match:
         results["loss_percentage"] = float(loss_match.group(1))
 
-    rtt_match = re.search(
-        r"min/avg/max/(?:stddev|mdev)\s*=\s*([\d./]+)\s*ms", ping_output
-    )
+    rtt_match = re.search(r"min/avg/max/(?:stddev|mdev)\s*=\s*([\d./]+)\s*ms", ping_output)
     if rtt_match:
         parts = rtt_match.group(1).split("/")
         if len(parts) == 4:
@@ -103,7 +138,7 @@ def parse_local_ping_results(ping_output: str) -> dict[str, float]:
     return results
 
 
-def log_results(all_data: dict[str, str | float | int | None]) -> None:
+def log_results(all_data: Mapping[str, str | float | int | None]) -> None:
     """
     Logs results to a CSV file and prints a color-coded summary to the console
     based on configured anomaly thresholds.
@@ -150,7 +185,7 @@ def log_results(all_data: dict[str, str | float | int | None]) -> None:
         value: Optional[float],
         unit: str,
         threshold: Optional[float],
-        comparison: str = "greater",
+        comparison: Literal["greater", "less"] = "greater",
         default_color: str = "",
         precision: int = 2,
     ) -> str:
@@ -175,95 +210,93 @@ def log_results(all_data: dict[str, str | float | int | None]) -> None:
     # --- Print to Console ---
     print("\n--- Gateway Test Results ---")
     loss_pct = format_value(
-        data_points['Gateway_LossPercentage'], 
-        '%', 
-        config.PACKET_LOSS_THRESHOLD
+        data_points["Gateway_LossPercentage"], "%", config.PACKET_LOSS_THRESHOLD
     )
     print(f"  Packet Loss:                {loss_pct}")
-    
+
     rtt_avg = format_value(
-        data_points['Gateway_RTT_avg_ms'], 
-        'ms', 
-        config.PING_RTT_THRESHOLD
+        data_points["Gateway_RTT_avg_ms"], "ms", config.PING_RTT_THRESHOLD
     )
     print(f"  WAN RTT (avg):              {rtt_avg}")
-    
+
     down_speed = format_value(
-        data_points['Gateway_Downstream_Mbps'], 
-        'Mbps', 
-        config.GATEWAY_DOWNSTREAM_SPEED_THRESHOLD, 
-        'less'
+        data_points["Gateway_Downstream_Mbps"],
+        "Mbps",
+        config.GATEWAY_DOWNSTREAM_SPEED_THRESHOLD,
+        "less",
     )
     print(f"  Downstream Speed:           {down_speed}")
-    
+
     up_speed = format_value(
-        data_points['Gateway_Upstream_Mbps'], 
-        'Mbps', 
-        config.GATEWAY_UPSTREAM_SPEED_THRESHOLD, 
-        'less'
+        data_points["Gateway_Upstream_Mbps"],
+        "Mbps",
+        config.GATEWAY_UPSTREAM_SPEED_THRESHOLD,
+        "less",
     )
     print(f"  Upstream Speed:             {up_speed}")
 
     print("\n--- Local Machine Test Results ---")
     wan_loss = format_value(
-        data_points['Local_WAN_LossPercentage'], 
-        '%', 
-        config.PACKET_LOSS_THRESHOLD
+        data_points["Local_WAN_LossPercentage"], "%", config.PACKET_LOSS_THRESHOLD
     )
     print(f"  WAN Packet Loss:            {wan_loss}")
-    
+
     wan_rtt = format_value(
-        data_points['Local_WAN_RTT_avg_ms'], 
-        'ms', 
-        config.PING_RTT_THRESHOLD
+        data_points["Local_WAN_RTT_avg_ms"], "ms", config.PING_RTT_THRESHOLD
     )
     print(f"  WAN RTT (avg):              {wan_rtt}")
-    
-    jitter = format_value(
-        data_points['Local_WAN_Ping_StdDev'], 
-        'ms', 
-        config.JITTER_THRESHOLD, 
-        precision=3
+
+    wan_jitter = format_value(
+        data_points["Local_WAN_Ping_StdDev"],
+        "ms",
+        config.JITTER_THRESHOLD,
+        precision=3,
     )
-    print(f"  Ping Jitter (StdDev):       {jitter}")
-    
+    print(f"  WAN Jitter (StdDev):          {wan_jitter}")
+
     gw_loss = format_value(
-        data_points['Local_GW_LossPercentage'], 
-        '%', 
-        config.PACKET_LOSS_THRESHOLD
+        data_points["Local_GW_LossPercentage"], "%", config.PACKET_LOSS_THRESHOLD
     )
     print(f"  Gateway Packet Loss:        {gw_loss}")
-    
-    # Special color for Local GW RTT
+
     gw_rtt = format_value(
-        data_points['Local_GW_RTT_avg_ms'], 
-        'ms', 
-        config.PING_RTT_THRESHOLD, 
-        default_color=Colors.CYAN
+        data_points["Local_GW_RTT_avg_ms"],
+        "ms",
+        config.PING_RTT_THRESHOLD,
+        default_color=Colors.CYAN,
     )
     print(f"  Gateway RTT (avg):          {gw_rtt}")
-    
+
+    gw_jitter = format_value(
+        data_points["Local_GW_Ping_StdDev"],
+        "ms",
+        config.JITTER_THRESHOLD,
+        precision=3,
+        default_color=Colors.CYAN,
+    )
+    print(f"  Gateway Jitter (StdDev):    {gw_jitter}")
+
     local_down = format_value(
-        data_points['Local_Downstream_Mbps'], 
-        'Mbps', 
-        config.LOCAL_DOWNSTREAM_SPEED_THRESHOLD, 
-        'less'
+        data_points["Local_Downstream_Mbps"],
+        "Mbps",
+        config.LOCAL_DOWNSTREAM_SPEED_THRESHOLD,
+        "less",
     )
     print(f"  Downstream Speed:           {local_down}")
-    
+
     local_up = format_value(
-        data_points['Local_Upstream_Mbps'], 
-        'Mbps', 
-        config.LOCAL_UPSTREAM_SPEED_THRESHOLD, 
-        'less'
+        data_points["Local_Upstream_Mbps"],
+        "Mbps",
+        config.LOCAL_UPSTREAM_SPEED_THRESHOLD,
+        "less",
     )
     print(f"  Upstream Speed:             {local_up}")
-    
+
     speed_jitter = format_value(
-        data_points['Local_Speedtest_Jitter_ms'], 
-        'ms', 
-        config.JITTER_THRESHOLD, 
-        precision=3
+        data_points["Local_Speedtest_Jitter_ms"],
+        "ms",
+        config.JITTER_THRESHOLD,
+        precision=3,
     )
     print(f"  Speedtest Jitter:           {speed_jitter}")
 
@@ -278,7 +311,7 @@ def log_results(all_data: dict[str, str | float | int | None]) -> None:
     print(f"Results appended to: {full_path}")
 
 
-def run_ping_test_task(driver: WebDriver) -> Optional[Dict[str, float]]:
+def run_ping_test_task(driver: WebDriver) -> Optional[GatewayPingResults]:
     """Runs the ping test on the gateway's diagnostics page and logs raw output."""
     print("Navigating to gateway diagnostics page for ping test...")
     driver.get(config.DIAG_URL)
@@ -315,9 +348,7 @@ def run_ping_test_task(driver: WebDriver) -> Optional[Dict[str, float]]:
         return None
 
 
-def run_speed_test_task(
-    driver: WebDriver, access_code: str
-) -> Optional[Dict[str, float]]:
+def run_speed_test_task(driver: WebDriver, access_code: str) -> Optional[SpeedResults]:
     """
     Automates the gateway speed test, returning numerical values for speeds.
     """
@@ -340,12 +371,16 @@ def run_speed_test_task(
         )
         run_button.click()
         print("Gateway speed test initiated. This will take up to 90 seconds...")
-        WebDriverWait(driver, 90).until(EC.element_to_be_clickable((By.NAME, "run")))
+        WebDriverWait(driver, 90).until(
+            EC.element_to_be_clickable((By.NAME, "run"))
+        )
         print("Gateway speed test complete. Parsing results...")
 
-        results: Dict[str, float] = {}
+        results: SpeedResults = {}
         table = WebDriverWait(driver, 10).until(
-            EC.visibility_of_element_located((By.CSS_SELECTOR, "table.grid.table100"))
+            EC.visibility_of_element_located(
+                (By.CSS_SELECTOR, "table.grid.table100")
+            )
         )
         rows = table.find_elements(By.TAG_NAME, "tr")
         for row in rows:
@@ -368,12 +403,14 @@ def run_speed_test_task(
         return None
 
 
-def run_local_ping_task(target: str) -> Dict[str, float]:
+def run_local_ping_task(target: str) -> LocalPingResults:
     """Runs a ping test from the local OS to the specified target."""
     print(f"Running local ping test to {target}...")
     try:
         command = ["ping", "-c", "4", target]
-        process = subprocess.run(command, capture_output=True, text=True, timeout=15)
+        process = subprocess.run(
+            command, capture_output=True, text=True, timeout=15
+        )
         if process.returncode == 0:
             print(f"Local ping to {target} complete.")
             return parse_local_ping_results(process.stdout)
@@ -392,11 +429,16 @@ def run_local_ping_task(target: str) -> Dict[str, float]:
         return {}
 
 
-def run_local_speed_test_task() -> Optional[Dict[str, float]]:
+# In main.py
+
+def run_local_speed_test_task() -> Optional[SpeedResults]:
     """
-    Runs a local speed test, returning numerical values for key metrics.
+    Runs a local speed test with a retry mechanism, returning numerical
+    values for key metrics.
     """
     print("Running local speed test using the official Ookla CLI...")
+    max_retries = 3
+    retry_delay_seconds = 10
 
     ookla_path = None
     possible_paths = ["/opt/homebrew/bin/speedtest", "/usr/local/bin/speedtest"]
@@ -416,60 +458,70 @@ def run_local_speed_test_task() -> Optional[Dict[str, float]]:
         print("---\n")
         return None
 
-    try:
-        command = [ookla_path, "--accept-license", "--accept-gdpr", "--format=json"]
-        process = subprocess.run(
-            command, capture_output=True, text=True, timeout=120, check=True
-        )
+    for attempt in range(max_retries):
+        try:
+            command = [
+                ookla_path,
+                "--accept-license",
+                "--accept-gdpr",
+                "--format=json",
+            ]
+            process = subprocess.run(
+                command, capture_output=True, text=True, timeout=120, check=True
+            )
 
-        json_output = None
-        for line in process.stdout.splitlines():
-            if line.strip().startswith("{"):
-                json_output = line
-                break
+            json_output = None
+            for line in process.stdout.splitlines():
+                if line.strip().startswith("{"):
+                    json_output = line
+                    break
 
-        if not json_output:
-            print("Error: Could not find JSON in the speedtest command output.")
-            print(f"--- Raw STDOUT ---\n{process.stdout}\n--------------------")
-            if process.stderr:
-                print(f"--- Raw STDERR ---\n{process.stderr}\n--------------------")
-            return None
+            if not json_output:
+                raise json.JSONDecodeError(
+                    "No JSON found in speedtest output", process.stdout, 0
+                )
 
-        results = json.loads(json_output)
-
-        download_speed = (
-            results.get("download", {}).get("bandwidth", 0) * 8
-        ) / 1_000_000
-        upload_speed = (results.get("upload", {}).get("bandwidth", 0) * 8) / 1_000_000
-        jitter = results.get("ping", {}).get("jitter", 0.0)
-
-        print("Local speed test complete.")
-
-        return {
-            "local_downstream_speed": download_speed,
-            "local_upstream_speed": upload_speed,
-            "local_speedtest_jitter": jitter,
-        }
-
-    except subprocess.CalledProcessError as e:
-        print(f"Error: The 'speedtest' command failed with return code {e.returncode}.")
-        print(f"Stdout: {e.stdout}")
-        print(f"Stderr: {e.stderr}")
-        return None
-    except subprocess.TimeoutExpired:
-        print("Error: The speed test command timed out after 120 seconds.")
-        return None
-    except json.JSONDecodeError:
-        print("Error: Could not parse JSON output from the 'speedtest' command.")
-        if "process" in locals():
-            print(f"--- Raw STDOUT ---\n{process.stdout}\n--------------------")
-        return None
-    except Exception as e:
-        print(f"An unexpected error occurred during the local speed test: {e}")
-        return None
+            results = json.loads(json_output)
+            # Check for explicit error messages from the speedtest CLI
+            if "error" in results:
+                raise Exception(f"Speedtest CLI returned an error: {results['error']}")
 
 
-def run_wifi_diagnostics_task() -> dict[str, str]:
+            download_speed = (
+                results.get("download", {}).get("bandwidth", 0) * 8
+            ) / 1_000_000
+            upload_speed = (
+                results.get("upload", {}).get("bandwidth", 0) * 8
+            ) / 1_000_000
+            jitter = results.get("ping", {}).get("jitter", 0.0)
+
+            print("Local speed test complete.")
+            return {
+                "local_downstream_speed": download_speed,
+                "local_upstream_speed": upload_speed,
+                "local_speedtest_jitter": jitter,
+            }
+
+        except subprocess.CalledProcessError as e:
+            print(f"Warning (Attempt {attempt + 1}/{max_retries}): The 'speedtest' command failed with return code {e.returncode}.")
+            print(f"Stdout: {e.stdout}")
+            print(f"Stderr: {e.stderr}")
+        except json.JSONDecodeError as e:
+            print(f"Warning (Attempt {attempt + 1}/{max_retries}): Could not parse JSON from speedtest.")
+            # The exception object in this case might contain the raw output
+            print(f"--- Raw STDOUT ---\n{e.doc}\n--------------------")
+        except Exception as e:
+            print(f"Warning (Attempt {attempt + 1}/{max_retries}): An unexpected error occurred: {e}")
+
+        if attempt < max_retries - 1:
+            print(f"Waiting {retry_delay_seconds} seconds before retrying...")
+            time.sleep(retry_delay_seconds)
+
+    print("Error: Local speed test failed after multiple attempts.")
+    return None
+
+
+def run_wifi_diagnostics_task() -> WifiDiagnostics:
     """
     Uses a hybrid approach: wdutil for live Wi-Fi stats (signal, etc.) and
     arp for a reliable BSSID (via the default gateway's MAC address).
@@ -478,7 +530,7 @@ def run_wifi_diagnostics_task() -> dict[str, str]:
         A dictionary of Wi-Fi metrics.
     """
     print("Running local Wi-Fi diagnostics...")
-    results: dict[str, str] = {}
+    results: WifiDiagnostics = {}
 
     # --- Part 1: Get Signal, Noise, etc. from wdutil ---
     try:
@@ -549,7 +601,7 @@ def perform_checks() -> None:
     """Main automation function to run all configured tests and log results."""
     global run_counter, DEVICE_ACCESS_CODE
     run_counter += 1
-    master_results = {}
+    master_results: dict[str, str | float | int | None] = {}
     print(
         f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
         f"Starting checks (Run #{run_counter})..."
@@ -568,7 +620,9 @@ def perform_checks() -> None:
     if config.RUN_LOCAL_GATEWAY_PING_TEST:
         gateway_ip = config.GATEWAY_URL.split("//")[-1].split("/")[0]
         gw_ping_results = run_local_ping_task(gateway_ip)
-        master_results.update({f"local_gw_{k}": v for k, v in gw_ping_results.items()})
+        master_results.update(
+            {f"local_gw_{k}": v for k, v in gw_ping_results.items()}
+        )
     if config.RUN_LOCAL_SPEED_TEST:
         local_speed_results = run_local_speed_test_task()
         if local_speed_results:
@@ -589,12 +643,13 @@ def perform_checks() -> None:
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
 
-    driver = None
-    service = ChromeService()  # Use Selenium Manager to handle the driver
+    driver: Optional[WebDriver] = None
+    # Use Selenium Manager to handle the driver
+    service: ChromeService = ChromeService()
     try:
         print("Setting up WebDriver for gateway tests...")
         driver = webdriver.Chrome(
-            service=service,  # Use the predefined service object
+            service=service,
             options=chrome_options,
         )
         driver.get(config.GATEWAY_URL)
@@ -603,7 +658,9 @@ def perform_checks() -> None:
         if gateway_ping_results:
             master_results.update(gateway_ping_results)
         if should_run_gateway_speed_test:
-            gateway_speed_results = run_speed_test_task(driver, DEVICE_ACCESS_CODE)
+            gateway_speed_results = run_speed_test_task(
+                driver, DEVICE_ACCESS_CODE
+            )
             if gateway_speed_results:
                 master_results.update(gateway_speed_results)
     except Exception as e:
@@ -617,13 +674,8 @@ def perform_checks() -> None:
         if driver:
             print("Closing WebDriver...")
             driver.quit()
-        # NEW: Add a more aggressive cleanup to prevent zombie processes
-        if service and service.process:
-            print("Ensuring chromedriver service is terminated...")
-            try:
-                service.process.kill()
-            except Exception as e:
-                print(f"Error while trying to kill service process: {e}")
+        if service:
+            service.stop()
 
     log_results(master_results)
     print("\n" + "=" * 60 + "\n")
