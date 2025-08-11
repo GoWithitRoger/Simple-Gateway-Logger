@@ -641,7 +641,10 @@ def run_wifi_diagnostics_task() -> WifiDiagnostics:
         def find_value(key: str, text: str) -> str:
             """Helper to find values in the wdutil output using regex."""
             match = re.search(rf"^\s*{key}\s*:\s*(.*)$", text, re.MULTILINE)
-            return match.group(1).strip() if match else "N/A"
+            if match:
+                # Strip trailing unit to normalize values like '864.0 Mbps' -> '864.0'
+                return match.group(1).strip().replace(" Mbps", "")
+            return "N/A"
 
         results["wifi_rssi"] = find_value("RSSI", output)
         results["wifi_noise"] = find_value("Noise", output)
