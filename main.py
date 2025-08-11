@@ -56,29 +56,6 @@ class DebugLogger:
         self.last_chromedriver_pid = pid
 
 
-def cleanup_old_processes(debug_logger: Optional["DebugLogger"] = None) -> None:
-    """Find and terminate any lingering chromedriver processes from previous runs.
-
-    This is a safeguard against resource leaks from crashed/orphaned sessions.
-    """
-    print("Running pre-emptive cleanup of old chromedriver processes...")
-    if debug_logger:
-        debug_logger.log("cleanup_old_processes: START")
-    try:
-        # Use pkill to find and kill processes by name. -f checks the full command line.
-        # The [c]haracter class is a trick to prevent pkill from finding its own process.
-        command = "pkill -f '[c]hromedriver'"
-        result = subprocess.run(command, shell=True, check=False)
-        if debug_logger:
-            rc = getattr(result, "returncode", "NA")
-            debug_logger.log(f"cleanup_old_processes: END (rc={rc})")
-        print("Cleanup complete.")
-    except Exception as e:
-        if debug_logger:
-            debug_logger.log(f"cleanup_old_processes: ERROR {e}")
-        print(f"Notice: Pre-emptive cleanup failed. This is non-critical. Error: {e}")
-
-
 def log_running_chromedriver_processes(debug_logger: DebugLogger) -> None:
     """Logs any active chromedriver processes using `ps`.
 
@@ -102,52 +79,64 @@ def log_running_chromedriver_processes(debug_logger: DebugLogger) -> None:
         debug_logger.log(f"Error while checking chromedriver processes: {e}")
 
 
+def cleanup_old_processes() -> None:
+    """Kill lingering chromedriver processes from prior runs (best-effort)."""
+    try:
+        subprocess.run("pkill -f '[c]hromedriver'", shell=True, check=False)
+    except Exception:
+        # Ignore any error; this is a best-effort cleanup.
+        pass
+
+
 @contextmanager
 def managed_webdriver_session(chrome_options: Options, debug_logger: DebugLogger):
-    """A self-cleaning context manager for the Selenium WebDriver.
+    """A self-contained, resilient context manager for Selenium WebDriver.
 
-    Sets up the driver and guarantees the chromedriver service process is
-    terminated on exit, aggressively if needed to avoid orphans.
+    It handles pre-emptive cleanup, robust initialization, and guaranteed teardown.
     """
-    service: ChromeService = ChromeService()
+    debug_logger.log("managed_webdriver_session: START")
+    print("Running pre-emptive cleanup of old chromedriver processes...")
+    try:
+        subprocess.run("pkill -f '[c]hromedriver'", shell=True, check=False)
+        print("Cleanup complete.")
+    except Exception as e:
+        print(f"Notice: Pre-emptive cleanup failed. This is non-critical. Error: {e}")
+
     driver: Optional[WebDriver] = None
+    service: Optional[ChromeService] = None
     print("Setting up WebDriver for gateway tests...")
     try:
+        service = ChromeService()
         driver = webdriver.Chrome(service=service, options=chrome_options)
-        # Track and log the chromedriver PID if available
-        try:
-            if service and service.process and service.process.pid:
-                debug_logger.set_chromedriver_pid(service.process.pid)
-                debug_logger.log(
-                    f"WebDriver service started with PID: {service.process.pid}"
-                )
-        except Exception as e:  # pragma: no cover - best effort logging
-            debug_logger.log(f"Unable to retrieve WebDriver PID: {e}")
+        if service and service.process and service.process.pid:
+            debug_logger.set_chromedriver_pid(service.process.pid)
+            debug_logger.log(f"WebDriver service started with PID: {service.process.pid}")
         yield driver
+    except Exception as e:
+        print(f"CRITICAL: Failed to initialize WebDriver session. Error: {e}")
+        yield None
     finally:
         print("Shutting down WebDriver session...")
         if driver:
             debug_logger.log("WebDriver quit: START")
             try:
-                driver.quit()  # Graceful shutdown of browser and driver
+                driver.quit()
             finally:
                 debug_logger.log("WebDriver quit: END")
-        # Aggressive kill of chromedriver service process
         if service and getattr(service, "process", None):
-            pid = getattr(service.process, "pid", None)
-            if pid:
-                debug_logger.log(
-                    f"Forcefully terminating chromedriver service (PID: {pid})..."
-                )
             try:
-                service.process.kill()  # Force kill to prevent orphans
-                service.process.wait(timeout=5)  # Confirm termination
-                debug_logger.log("Service terminated successfully.")
-            except Exception as e:  # pragma: no cover - defensive
-                debug_logger.log(
-                    "Notice: Could not kill service process; it may have already exited. "
+                pid = getattr(service.process, "pid", None)
+                if pid:
+                    print(f"Forcefully terminating chromedriver service (PID: {pid})...")
+                service.process.kill()
+                service.process.wait(timeout=5)
+                print("Service terminated successfully.")
+            except Exception as e:
+                print(
+                    "Notice: Could not kill service process, it may have already exited. "
                     f"Error: {e}"
                 )
+        debug_logger.log("managed_webdriver_session: END")
         # Verify process state after teardown
         log_running_chromedriver_processes(debug_logger)
 
@@ -451,11 +440,8 @@ def run_ping_test_task(driver: WebDriver) -> Optional[GatewayPingResults]:
             return None
         return parse_gateway_ping_results(results_text)
     except Exception as e:
-        print(f"Error during gateway ping test: {e}")
-        error_time = datetime.now().strftime("%Y%m%d_%H%M%S")
-        screenshot_file = f"error_screenshot_gateway_ping_{error_time}.png"
-        driver.save_screenshot(screenshot_file)
-        print(f"Saved screenshot to {screenshot_file} for debugging.")
+        # Just log the error and return. Don't try to interact with a potentially dead driver.
+        print(f"An error occurred during the task: {e}")
         return None
 
 
@@ -504,7 +490,8 @@ def run_speed_test_task(driver: WebDriver, access_code: str) -> Optional[SpeedRe
                 break
         return results if results else None
     except Exception as e:
-        print(f"Error during gateway speed test: {e}")
+        # Just log the error and return. Don't try to interact with a potentially dead driver.
+        print(f"An error occurred during the task: {e}")
         return None
 
 
@@ -713,14 +700,14 @@ def perform_checks() -> None:
     master_results: dict[str, str | float | int | None] = {}
     debug_log = DebugLogger(start_time=time.time())
     debug_log.log("perform_checks: START")
-    # Pre-emptive scavenger to ensure no orphaned chromedriver processes linger
-    cleanup_old_processes(debug_log)
     print(
         f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
         f"Starting checks (Run #{run_counter})..."
     )
 
-    # Check for any lingering chromedriver processes from previous runs
+    # Pre-emptive cleanup should run first
+    cleanup_old_processes()
+    # Optionally log existing chromedriver processes after cleanup in debug mode
     log_running_chromedriver_processes(debug_log)
 
     # --- Run Local Tests (No Browser Required) ---
@@ -763,34 +750,20 @@ def perform_checks() -> None:
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
 
-    try:
-        debug_log.log("Selenium setup: START")
-        with managed_webdriver_session(chrome_options, debug_log) as driver:
-            debug_log.log("Selenium setup: END")
-            driver.get(config.GATEWAY_URL)
-            time.sleep(2)
+    # The 'try...except' is removed, as the context manager handles its own errors.
+    with managed_webdriver_session(chrome_options, debug_log) as driver:
+        if driver:
+            # Safely run tasks if the driver was created successfully
             debug_log.log("run_ping_test_task: START")
-            gateway_ping_results = run_ping_test_task(driver)
+            master_results.update(run_ping_test_task(driver) or {})
             debug_log.log("run_ping_test_task: END")
-            if gateway_ping_results:
-                master_results.update(gateway_ping_results)
             if should_run_gateway_speed_test:
                 debug_log.log("run_speed_test_task: START")
-                gateway_speed_results = run_speed_test_task(driver, DEVICE_ACCESS_CODE)
+                master_results.update(run_speed_test_task(driver, DEVICE_ACCESS_CODE) or {})
                 debug_log.log("run_speed_test_task: END")
-                if gateway_speed_results:
-                    master_results.update(gateway_speed_results)
-    except Exception as e:
-        print(f"A critical error occurred in the WebDriver session: {e}")
-        # Best-effort screenshot if driver existed during context
-        try:
-            if 'driver' in locals() and driver:
-                error_time = datetime.now().strftime("%Y%m%d_%H%M%S")
-                screenshot_file = f"error_screenshot_{error_time}.png"
-                driver.save_screenshot(screenshot_file)
-                print(f"Saved screenshot to {screenshot_file} for debugging.")
-        except Exception:
-            pass
+        else:
+            # This 'else' block will run if the context manager yields None
+            print("Skipping gateway tests because WebDriver session failed to start.")
 
     debug_log.log("perform_checks: END")
     log_results(master_results)
