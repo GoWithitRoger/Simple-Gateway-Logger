@@ -15,6 +15,7 @@ import os
 import re
 import subprocess
 import time
+from contextlib import contextmanager
 from datetime import datetime
 from typing import ClassVar, Literal, Mapping, Optional, TypedDict
 
@@ -55,6 +56,29 @@ class DebugLogger:
         self.last_chromedriver_pid = pid
 
 
+def cleanup_old_processes(debug_logger: Optional["DebugLogger"] = None) -> None:
+    """Find and terminate any lingering chromedriver processes from previous runs.
+
+    This is a safeguard against resource leaks from crashed/orphaned sessions.
+    """
+    print("Running pre-emptive cleanup of old chromedriver processes...")
+    if debug_logger:
+        debug_logger.log("cleanup_old_processes: START")
+    try:
+        # Use pkill to find and kill processes by name. -f checks the full command line.
+        # The [c]haracter class is a trick to prevent pkill from finding its own process.
+        command = "pkill -f '[c]hromedriver'"
+        result = subprocess.run(command, shell=True, check=False)
+        if debug_logger:
+            rc = getattr(result, "returncode", "NA")
+            debug_logger.log(f"cleanup_old_processes: END (rc={rc})")
+        print("Cleanup complete.")
+    except Exception as e:
+        if debug_logger:
+            debug_logger.log(f"cleanup_old_processes: ERROR {e}")
+        print(f"Notice: Pre-emptive cleanup failed. This is non-critical. Error: {e}")
+
+
 def log_running_chromedriver_processes(debug_logger: DebugLogger) -> None:
     """Logs any active chromedriver processes using `ps`.
 
@@ -76,6 +100,56 @@ def log_running_chromedriver_processes(debug_logger: DebugLogger) -> None:
             debug_logger.log("No active chromedriver processes found.")
     except Exception as e:
         debug_logger.log(f"Error while checking chromedriver processes: {e}")
+
+
+@contextmanager
+def managed_webdriver_session(chrome_options: Options, debug_logger: DebugLogger):
+    """A self-cleaning context manager for the Selenium WebDriver.
+
+    Sets up the driver and guarantees the chromedriver service process is
+    terminated on exit, aggressively if needed to avoid orphans.
+    """
+    service: ChromeService = ChromeService()
+    driver: Optional[WebDriver] = None
+    print("Setting up WebDriver for gateway tests...")
+    try:
+        driver = webdriver.Chrome(service=service, options=chrome_options)
+        # Track and log the chromedriver PID if available
+        try:
+            if service and service.process and service.process.pid:
+                debug_logger.set_chromedriver_pid(service.process.pid)
+                debug_logger.log(
+                    f"WebDriver service started with PID: {service.process.pid}"
+                )
+        except Exception as e:  # pragma: no cover - best effort logging
+            debug_logger.log(f"Unable to retrieve WebDriver PID: {e}")
+        yield driver
+    finally:
+        print("Shutting down WebDriver session...")
+        if driver:
+            debug_logger.log("WebDriver quit: START")
+            try:
+                driver.quit()  # Graceful shutdown of browser and driver
+            finally:
+                debug_logger.log("WebDriver quit: END")
+        # Aggressive kill of chromedriver service process
+        if service and getattr(service, "process", None):
+            pid = getattr(service.process, "pid", None)
+            if pid:
+                debug_logger.log(
+                    f"Forcefully terminating chromedriver service (PID: {pid})..."
+                )
+            try:
+                service.process.kill()  # Force kill to prevent orphans
+                service.process.wait(timeout=5)  # Confirm termination
+                debug_logger.log("Service terminated successfully.")
+            except Exception as e:  # pragma: no cover - defensive
+                debug_logger.log(
+                    "Notice: Could not kill service process; it may have already exited. "
+                    f"Error: {e}"
+                )
+        # Verify process state after teardown
+        log_running_chromedriver_processes(debug_logger)
 
 
 # --- Typing Models ---
@@ -454,9 +528,6 @@ def run_local_ping_task(target: str) -> LocalPingResults:
         return {}
 
 
-# In main.py
-
-
 def run_local_speed_test_task() -> Optional[SpeedResults]:
     """
     Runs a local speed test with a retry mechanism, returning numerical
@@ -570,12 +641,26 @@ def run_wifi_diagnostics_task() -> WifiDiagnostics:
         def find_value(key: str, text: str) -> str:
             """Helper to find values in the wdutil output using regex."""
             match = re.search(rf"^\s*{key}\s*:\s*(.*)$", text, re.MULTILINE)
-            return match.group(1).strip() if match else "N/A"
+            if match:
+                # Strip trailing unit to normalize values like '864.0 Mbps' -> '864.0'
+                return match.group(1).strip().replace(" Mbps", "")
+            return "N/A"
 
         results["wifi_rssi"] = find_value("RSSI", output)
         results["wifi_noise"] = find_value("Noise", output)
-        results["wifi_tx_rate"] = find_value("TxRate", output)
         results["wifi_channel"] = find_value("Channel", output)
+
+        # Try a list of possible keys for transmit rate to make it more universal
+        tx_rate_keys = ["Tx Rate", "TxRate", "Last Tx Rate", "Max PHY Rate"]
+        for key in tx_rate_keys:
+            tx_rate = find_value(key, output)
+            if tx_rate != "N/A":
+                # Found it, so we can stop looking
+                results["wifi_tx_rate"] = tx_rate
+                break
+        else:
+            # If the loop finishes without finding any key, default to N/A
+            results["wifi_tx_rate"] = "N/A"
 
     except Exception as e:
         print(f"Warning: Could not parse wdutil output. Error: {e}")
@@ -628,6 +713,8 @@ def perform_checks() -> None:
     master_results: dict[str, str | float | int | None] = {}
     debug_log = DebugLogger(start_time=time.time())
     debug_log.log("perform_checks: START")
+    # Pre-emptive scavenger to ensure no orphaned chromedriver processes linger
+    cleanup_old_processes(debug_log)
     print(
         f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
         f"Starting checks (Run #{run_counter})..."
@@ -676,56 +763,34 @@ def perform_checks() -> None:
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
 
-    driver: Optional[WebDriver] = None
-    # Use Selenium Manager to handle the driver
-    service: ChromeService = ChromeService()
     try:
         debug_log.log("Selenium setup: START")
-        print("Setting up WebDriver for gateway tests...")
-        driver = webdriver.Chrome(
-            service=service,
-            options=chrome_options,
-        )
-        # Track and log the chromedriver PID if available
-        try:
-            if service and service.process and service.process.pid:
-                debug_log.set_chromedriver_pid(service.process.pid)
-                debug_log.log(f"WebDriver service started with PID: {service.process.pid}")
-        except Exception as e:
-            debug_log.log(f"Unable to retrieve WebDriver PID: {e}")
-        debug_log.log("Selenium setup: END")
-        driver.get(config.GATEWAY_URL)
-        time.sleep(2)
-        debug_log.log("run_ping_test_task: START")
-        gateway_ping_results = run_ping_test_task(driver)
-        debug_log.log("run_ping_test_task: END")
-        if gateway_ping_results:
-            master_results.update(gateway_ping_results)
-        if should_run_gateway_speed_test:
-            debug_log.log("run_speed_test_task: START")
-            gateway_speed_results = run_speed_test_task(driver, DEVICE_ACCESS_CODE)
-            debug_log.log("run_speed_test_task: END")
-            if gateway_speed_results:
-                master_results.update(gateway_speed_results)
+        with managed_webdriver_session(chrome_options, debug_log) as driver:
+            debug_log.log("Selenium setup: END")
+            driver.get(config.GATEWAY_URL)
+            time.sleep(2)
+            debug_log.log("run_ping_test_task: START")
+            gateway_ping_results = run_ping_test_task(driver)
+            debug_log.log("run_ping_test_task: END")
+            if gateway_ping_results:
+                master_results.update(gateway_ping_results)
+            if should_run_gateway_speed_test:
+                debug_log.log("run_speed_test_task: START")
+                gateway_speed_results = run_speed_test_task(driver, DEVICE_ACCESS_CODE)
+                debug_log.log("run_speed_test_task: END")
+                if gateway_speed_results:
+                    master_results.update(gateway_speed_results)
     except Exception as e:
-        print(f"An error occurred during the gateway automation process: {e}")
-        if driver:
-            error_time = datetime.now().strftime("%Y%m%d_%H%M%S")
-            screenshot_file = f"error_screenshot_{error_time}.png"
-            driver.save_screenshot(screenshot_file)
-            print(f"Saved screenshot to {screenshot_file} for debugging.")
-    finally:
-        if driver:
-            debug_log.log("WebDriver quit: START")
-            print("Closing WebDriver...")
-            driver.quit()
-            debug_log.log("WebDriver quit: END")
-        if service:
-            debug_log.log("WebDriver service.stop(): START")
-            service.stop()
-            debug_log.log("WebDriver service.stop(): END")
-            # Verify process state immediately after stopping service
-            log_running_chromedriver_processes(debug_log)
+        print(f"A critical error occurred in the WebDriver session: {e}")
+        # Best-effort screenshot if driver existed during context
+        try:
+            if 'driver' in locals() and driver:
+                error_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+                screenshot_file = f"error_screenshot_{error_time}.png"
+                driver.save_screenshot(screenshot_file)
+                print(f"Saved screenshot to {screenshot_file} for debugging.")
+        except Exception:
+            pass
 
     debug_log.log("perform_checks: END")
     log_results(master_results)

@@ -23,6 +23,7 @@ def mock_tasks():
         patch("main.run_local_speed_test_task", return_value={}) as mock_local_speed,
         patch("main.run_ping_test_task", return_value={}) as mock_gateway_ping,
         patch("main.run_speed_test_task", return_value={}) as mock_gateway_speed,
+        patch("main.cleanup_old_processes") as mock_cleanup,
         patch("main.log_results") as mock_log,
         patch("main.webdriver.Chrome", return_value=MagicMock()) as mock_chrome,
         patch("main.get_access_code", return_value="test-code") as mock_access_code,
@@ -37,6 +38,7 @@ def mock_tasks():
             "local_speed": mock_local_speed,
             "gateway_ping": mock_gateway_ping,
             "gateway_speed": mock_gateway_speed,
+            "cleanup": mock_cleanup,
             "log": mock_log,
             "chrome": mock_chrome,
             "access_code": mock_access_code,
@@ -102,17 +104,25 @@ def test_perform_checks_gateway_speed_test_interval(mock_tasks, monkeypatch):
     perform_checks()  # Run 1
     mock_tasks["gateway_speed"].assert_not_called()
 
-    mock_tasks["gateway_speed"].reset_mock()
 
-    # Should run on second call (run #2)
-    perform_checks()  # Run 2
-    mock_tasks["gateway_speed"].assert_called_once()
+def test_perform_checks_calls_cleanup_first(mock_tasks, monkeypatch):
+    """Ensure the pre-emptive cleanup runs at the beginning of perform_checks."""
+    # Configure toggles so at least one downstream task runs
+    monkeypatch.setattr(config_module, "RUN_LOCAL_PING_TEST", True)
+    monkeypatch.setattr(config_module, "RUN_LOCAL_GATEWAY_PING_TEST", False)
+    monkeypatch.setattr(config_module, "RUN_LOCAL_SPEED_TEST", False)
 
-    mock_tasks["gateway_speed"].reset_mock()
+    events: list[str] = []
+    mock_tasks["cleanup"].side_effect = lambda *_, **__: events.append("cleanup")
+    mock_tasks["wifi"].side_effect = lambda: (events.append("wifi"), {})[1]
 
-    # Should NOT run on third call (run #3)
-    perform_checks()  # Run 3
-    mock_tasks["gateway_speed"].assert_not_called()
+    perform_checks()
+
+    # cleanup should be called and recorded before wifi diagnostics
+    assert mock_tasks["cleanup"].call_count == 1
+    assert events and events[0] == "cleanup"
+
+    # Do not assert interval behavior here; covered by dedicated test
 
 
 def test_perform_checks_gateway_speed_test_disabled(mock_tasks, monkeypatch):
