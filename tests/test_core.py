@@ -57,9 +57,20 @@ PING google.com (142.250.191.174): 56 data bytes
 SPEEDTEST_JSON_OUTPUT = (
     '{"type": "result", "timestamp": "2025-08-06T22:00:00Z", '
     '"ping": {"jitter": 2.789, "latency": 10.123}, '
-    '"download": {"bandwidth": 37500000, "bytes": 300000000, "elapsed": 8000}, '
-    '"upload": {"bandwidth": 2500000, "bytes": 20000000, "elapsed": 8000}}'
+    '"download": {"bandwidth": 37500000, "bytes": 300000000, "elapsed": 8000, '
+    '              "latency": {"iqm": 75.5}}, '
+    '"upload": {"bandwidth": 2500000, "bytes": 20000000, "elapsed": 8000, '
+    '            "latency": {"iqm": 42.0}}, '
+    '"packetLoss": 0.25}'
 )  # 300 Mbps down, 20 Mbps up
+
+# Mock JSON missing bufferbloat fields
+SPEEDTEST_JSON_OUTPUT_MISSING = (
+    '{"type": "result", "timestamp": "2025-08-06T22:00:00Z", '
+    '"ping": {"jitter": 1.234, "latency": 9.876}, '
+    '"download": {"bandwidth": 10000000, "bytes": 80000000, "elapsed": 8000}, '
+    '"upload": {"bandwidth": 2000000, "bytes": 16000000, "elapsed": 8000}}'
+)  # Missing download/upload latency and packetLoss
 
 # Mock data for Wi-Fi diagnostics
 WIFI_DIAG_OUTPUT = "RSSI: -55\nNoise: -90\nTxRate: 866\nChannel: 149,80"
@@ -142,6 +153,29 @@ def test_local_speed_test_parsing(mock_run, mock_exists):
     assert results.get("local_downstream_speed") == 300.0
     assert results.get("local_upstream_speed") == 20.0
     assert results.get("local_speedtest_jitter") == 2.789
+    assert results.get("local_latency_down_load_ms") == 75.5
+    assert results.get("local_latency_up_load_ms") == 42.0
+    assert results.get("local_packet_loss_pct") == 0.25
+
+
+@patch("main.os.path.exists", return_value=True)
+@patch("main.subprocess.run")
+def test_local_speed_test_parsing_missing_keys(mock_run, mock_exists):
+    """Ookla JSON may omit latency/packetLoss; defaults should be 0.0 without errors."""
+    mock_run.return_value = MagicMock(
+        stdout=SPEEDTEST_JSON_OUTPUT_MISSING, returncode=0, stderr=""
+    )
+    results = run_local_speed_test_task()
+    assert results is not None
+    # Speeds should parse
+    assert results.get("local_downstream_speed") == 80.0  # 10,000,000 * 8 / 1e6
+    assert results.get("local_upstream_speed") == 16.0  # 2,000,000 * 8 / 1e6
+    # Jitter present from ping
+    assert results.get("local_speedtest_jitter") == 1.234
+    # Missing fields default to 0.0
+    assert results.get("local_latency_down_load_ms") == 0.0
+    assert results.get("local_latency_up_load_ms") == 0.0
+    assert results.get("local_packet_loss_pct") == 0.0
 
 
 @patch("main.subprocess.run")

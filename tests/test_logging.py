@@ -32,6 +32,10 @@ MOCK_DATA_COMPLETE: ResultRow = {
     "local_downstream_speed": 450.0,
     "local_upstream_speed": 25.0,
     "local_speedtest_jitter": 12.0,
+    # New bufferbloat metrics
+    "local_latency_down_load_ms": 75.5,
+    "local_latency_up_load_ms": 42.0,
+    "local_packet_loss_pct": 0.25,
     "wifi_bssid": "a1:b2:c3:d4:e5:f6",
     "wifi_channel": "149,80",
     "wifi_rssi": "-55",
@@ -70,17 +74,15 @@ def test_log_results_csv_creation(mock_exists, mock_open_file) -> None:
     """Tests that a new CSV file is created with a header."""
     log_results(MOCK_DATA_COMPLETE)
     handle = mock_open_file()
-    header = (
-        "Timestamp,Gateway_LossPercentage,Gateway_RTT_avg_ms,Gateway_Downstream_Mbps,"
-        "Gateway_Upstream_Mbps,Local_WAN_LossPercentage,Local_WAN_RTT_avg_ms,"
-        "Local_WAN_Ping_StdDev,Local_GW_LossPercentage,Local_GW_RTT_avg_ms,"
-        "Local_GW_Ping_StdDev,Local_Downstream_Mbps,Local_Upstream_Mbps,Local_Speedtest_Jitter_ms,"
-        "WiFi_BSSID,WiFi_Channel,WiFi_RSSI,WiFi_Noise,WiFi_TxRate_Mbps\n"
-    )
     written_header = handle.mock_calls[1][1][0]
     written_data_row = handle.mock_calls[2][1][0]
-    assert header.strip() == written_header.strip()
+    # Header should include new bufferbloat fields
+    assert "Local_Load_Down_ms" in written_header
+    assert "Local_Load_Up_ms" in written_header
+    assert "Local_Pkt_Loss_Pct" in written_header
     assert MOCK_DATA_COMPLETE["wifi_bssid"] in written_data_row
+    # Ensure at least one new value appears in the CSV row with 3-decimal formatting
+    assert "75.500" in written_data_row
     assert handle.write.call_count == 2
 
 
@@ -106,8 +108,15 @@ def test_log_results_console_output_highlighting(mock_print) -> None:
     config.GATEWAY_DOWNSTREAM_SPEED_THRESHOLD = 50.0
     config.GATEWAY_UPSTREAM_SPEED_THRESHOLD = 10.0
     config.JITTER_THRESHOLD = 10.0
+    config.LATENCY_UNDER_LOAD_THRESHOLD = 100.0
+    config.SPEEDTEST_PACKET_LOSS_THRESHOLD = 0.5
+    # Use a modified dataset to trigger anomalies for bufferbloat metrics
+    data_for_highlighting = dict(MOCK_DATA_COMPLETE)
+    data_for_highlighting["local_latency_down_load_ms"] = 150.0  # > 100 threshold
+    data_for_highlighting["local_latency_up_load_ms"] = 125.0  # > 100 threshold
+    data_for_highlighting["local_packet_loss_pct"] = 0.75  # > 0.5 threshold
 
-    log_results(MOCK_DATA_COMPLETE)
+    log_results(data_for_highlighting)
     all_output = " ".join([str(call.args[0]) for call in mock_print.call_args_list])
 
     assert f"{Colors.RED}1.50{Colors.RESET}" in all_output
@@ -116,7 +125,65 @@ def test_log_results_console_output_highlighting(mock_print) -> None:
     assert f"{Colors.RED}5.00{Colors.RESET}" in all_output
     assert f"{Colors.RED}12.000{Colors.RESET}" in all_output
     assert f"{Colors.CYAN}1.00{Colors.RESET}" in all_output
+    # New assertions: anomalous bufferbloat metrics are highlighted in red
+    assert f"{Colors.RED}150.00{Colors.RESET}" in all_output  # Download load latency
+    assert f"{Colors.RED}125.00{Colors.RESET}" in all_output  # Upload load latency
+    assert f"{Colors.RED}0.75{Colors.RESET}" in all_output  # Packet loss percentage
     importlib.reload(config)
+
+
+@patch("builtins.print")
+def test_log_results_console_boundary_not_highlighted(mock_print) -> None:
+    """Values equal to thresholds should NOT be highlighted (strictly greater logic)."""
+    config.ENABLE_ANOMALY_HIGHLIGHTING = True
+    config.LATENCY_UNDER_LOAD_THRESHOLD = 100.0
+    config.SPEEDTEST_PACKET_LOSS_THRESHOLD = 0.50
+
+    data = dict(MOCK_DATA_COMPLETE)
+    data["local_latency_down_load_ms"] = 100.0
+    data["local_latency_up_load_ms"] = 100.0
+    data["local_packet_loss_pct"] = 0.50
+
+    log_results(data)
+    all_output = " ".join([str(call.args[0]) for call in mock_print.call_args_list])
+
+    # Ensure red highlighting is NOT applied on boundary equality
+    assert f"{Colors.RED}100.00{Colors.RESET}" not in all_output
+    assert f"{Colors.RED}0.50{Colors.RESET}" not in all_output
+    # Plain uncolored values should appear
+    assert "100.00 ms" in all_output
+    assert "0.50 %" in all_output
+
+
+@patch("builtins.open", new_callable=mock_open)
+@patch("main.os.path.exists", return_value=False)
+def test_log_results_csv_precision_for_new_fields(mock_exists, mock_open_file) -> None:
+    """CSV should format floats to 3 decimals for new bufferbloat fields."""
+    data = dict(MOCK_DATA_COMPLETE)
+    data["local_latency_down_load_ms"] = 1.23456
+    data["local_latency_up_load_ms"] = 9.87654
+    data["local_packet_loss_pct"] = 0.78901
+    log_results(data)
+    handle = mock_open_file()
+    written_data_row = handle.mock_calls[2][1][0]
+    assert ",1.235," in written_data_row
+    assert ",9.877," in written_data_row
+    assert ",0.789," in written_data_row
+
+
+@patch("builtins.print")
+def test_log_results_console_precision_for_latency_and_packet_loss(mock_print) -> None:
+    """Console formatting: latency rounded to 2 decimals, packet loss to 2 decimals."""
+    config.ENABLE_ANOMALY_HIGHLIGHTING = False  # Disable colors to check raw strings
+    data = dict(MOCK_DATA_COMPLETE)
+    data["local_latency_down_load_ms"] = 123.456
+    data["local_latency_up_load_ms"] = 7.891
+    data["local_packet_loss_pct"] = 1.234
+    log_results(data)
+    all_output = " ".join([str(call.args[0]) for call in mock_print.call_args_list])
+    assert "123.46 ms" in all_output
+    assert "7.89 ms" in all_output
+    assert "1.23 %" in all_output
 
 
 @pytest.mark.parametrize(

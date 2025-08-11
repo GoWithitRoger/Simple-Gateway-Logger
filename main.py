@@ -121,6 +121,8 @@ def managed_webdriver_session(chrome_options: Options, debug_logger: DebugLogger
             debug_logger.log("WebDriver quit: START")
             try:
                 driver.quit()
+            except Exception as e:
+                debug_logger.log(f"Ignoring error during driver.quit(): {e}")
             finally:
                 debug_logger.log("WebDriver quit: END")
         if service and getattr(service, "process", None):
@@ -167,6 +169,10 @@ class SpeedResults(TypedDict, total=False):
     local_downstream_speed: float
     local_upstream_speed: float
     local_speedtest_jitter: float
+    # Bufferbloat / under-load metrics from local Ookla CLI JSON
+    local_latency_down_load_ms: float
+    local_latency_up_load_ms: float
+    local_packet_loss_pct: float
 
 
 class WifiDiagnostics(TypedDict, total=False):
@@ -266,6 +272,13 @@ def log_results(all_data: Mapping[str, str | float | int | None]) -> None:
         "Local_Downstream_Mbps": all_data.get("local_downstream_speed"),
         "Local_Upstream_Mbps": all_data.get("local_upstream_speed"),
         "Local_Speedtest_Jitter_ms": all_data.get("local_speedtest_jitter"),
+        # Calculated bufferbloat deltas
+        "Download_Bufferbloat_ms": all_data.get("download_bufferbloat_ms"),
+        "Upload_Bufferbloat_ms": all_data.get("upload_bufferbloat_ms"),
+        # New bufferbloat metrics
+        "Local_Load_Down_ms": all_data.get("local_latency_down_load_ms"),
+        "Local_Load_Up_ms": all_data.get("local_latency_up_load_ms"),
+        "Local_Pkt_Loss_Pct": all_data.get("local_packet_loss_pct"),
         "WiFi_BSSID": all_data.get("wifi_bssid", "N/A"),
         "WiFi_Channel": all_data.get("wifi_channel", "N/A"),
         "WiFi_RSSI": all_data.get("wifi_rssi", "N/A"),
@@ -275,7 +288,7 @@ def log_results(all_data: Mapping[str, str | float | int | None]) -> None:
 
     # --- CSV Logging ---
     csv_values = [
-        f"{v:.3f}" if isinstance(v, float) else ("N/A" if v is None else v)
+        f"{v:.3f}" if isinstance(v, float) else "N/A" if v is None else str(v)
         for v in data_points.values()
     ]
     header = "Timestamp," + ",".join(data_points.keys()) + "\n"
@@ -402,6 +415,39 @@ def log_results(all_data: Mapping[str, str | float | int | None]) -> None:
     )
     print(f"  Speedtest Jitter:           {speed_jitter}")
 
+    # Bufferbloat deltas (idle -> under-load)
+    down_bloat = format_value(
+        data_points["Download_Bufferbloat_ms"],
+        "ms",
+        config.BUFFERBLOAT_DELTA_THRESHOLD,
+        precision=2,
+    )
+    print(f"  Download Bufferbloat:       {down_bloat}")
+
+    up_bloat = format_value(
+        data_points["Upload_Bufferbloat_ms"],
+        "ms",
+        config.BUFFERBLOAT_DELTA_THRESHOLD,
+        precision=2,
+    )
+    print(f"  Upload Bufferbloat:         {up_bloat}")
+
+    # New bufferbloat metrics
+    down_load_latency = format_value(
+        data_points["Local_Load_Down_ms"], "ms", config.LATENCY_UNDER_LOAD_THRESHOLD
+    )
+    print(f"  Latency (Download Load):    {down_load_latency}")
+
+    up_load_latency = format_value(
+        data_points["Local_Load_Up_ms"], "ms", config.LATENCY_UNDER_LOAD_THRESHOLD
+    )
+    print(f"  Latency (Upload Load):      {up_load_latency}")
+
+    packet_loss_val = format_value(
+        data_points["Local_Pkt_Loss_Pct"], "%", config.SPEEDTEST_PACKET_LOSS_THRESHOLD
+    )
+    print(f"  Speedtest Packet Loss:      {packet_loss_val}")
+
     print("\n--- Wi-Fi Diagnostics ---")
     print(f"  Connected AP (BSSID):       {data_points['WiFi_BSSID']}")
     print(f"  Signal Strength (RSSI):     {data_points['WiFi_RSSI']}")
@@ -426,7 +472,12 @@ def run_ping_test_task(driver: WebDriver) -> Optional[GatewayPingResults]:
         driver.execute_script("arguments[0].click();", ping_button)
         print(f"Gateway ping test started for {config.PING_TARGET}.")
         print("Waiting for gateway ping results...")
-        time.sleep(15)
+        wait = WebDriverWait(driver, 30)
+        wait.until(
+            lambda d: "ping statistics" in d.find_element(By.ID, "progress").get_attribute("value")
+        )
+
+        # Re-find the element after the wait to avoid stale references
         results_element = driver.find_element(By.ID, "progress")
         results_text = (results_element.get_attribute("value") or "").strip()
         if results_text:
@@ -466,13 +517,14 @@ def run_speed_test_task(driver: WebDriver, access_code: str) -> Optional[SpeedRe
         run_button = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.NAME, "run")))
         run_button.click()
         print("Gateway speed test initiated. This will take up to 90 seconds...")
-        WebDriverWait(driver, 90).until(EC.element_to_be_clickable((By.NAME, "run")))
+        # Wait directly for the results table to appear
+        # instead of relying on the run button's state
+        print("Waiting for gateway results table...")
+        table_selector = (By.CSS_SELECTOR, "table.grid.table100")
+        table = WebDriverWait(driver, 90).until(EC.visibility_of_element_located(table_selector))
         print("Gateway speed test complete. Parsing results...")
 
         results: SpeedResults = {}
-        table = WebDriverWait(driver, 10).until(
-            EC.visibility_of_element_located((By.CSS_SELECTOR, "table.grid.table100"))
-        )
         rows = table.find_elements(By.TAG_NAME, "tr")
         for row in rows:
             cols = row.find_elements(By.TAG_NAME, "td")
@@ -570,11 +622,19 @@ def run_local_speed_test_task() -> Optional[SpeedResults]:
             upload_speed = (results.get("upload", {}).get("bandwidth", 0) * 8) / 1_000_000
             jitter = results.get("ping", {}).get("jitter", 0.0)
 
+            # New parsing logic for bufferbloat
+            latency_down = results.get("download", {}).get("latency", {}).get("iqm", 0.0)
+            latency_up = results.get("upload", {}).get("latency", {}).get("iqm", 0.0)
+            packet_loss = results.get("packetLoss", 0.0)
+
             print("Local speed test complete.")
             return {
                 "local_downstream_speed": download_speed,
                 "local_upstream_speed": upload_speed,
                 "local_speedtest_jitter": jitter,
+                "local_latency_down_load_ms": latency_down,
+                "local_latency_up_load_ms": latency_up,
+                "local_packet_loss_pct": packet_loss,
             }
 
         except subprocess.CalledProcessError as e:
@@ -764,6 +824,22 @@ def perform_checks() -> None:
         else:
             # This 'else' block will run if the context manager yields None
             print("Skipping gateway tests because WebDriver session failed to start.")
+
+    # --- Bufferbloat calculation (download/upload deltas relative to idle WAN RTT) ---
+    idle_latency = master_results.get("local_wan_rtt_avg_ms")
+    down_latency = master_results.get("local_latency_down_load_ms")
+    up_latency = master_results.get("local_latency_up_load_ms")
+
+    master_results["download_bufferbloat_ms"] = (
+        (down_latency - idle_latency)
+        if (idle_latency is not None and down_latency is not None)
+        else None
+    )
+    master_results["upload_bufferbloat_ms"] = (
+        (up_latency - idle_latency)
+        if (idle_latency is not None and up_latency is not None)
+        else None
+    )
 
     debug_log.log("perform_checks: END")
     log_results(master_results)

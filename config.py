@@ -45,6 +45,12 @@ PACKET_LOSS_THRESHOLD: float = 0.0
 PING_RTT_THRESHOLD: float = 30.0
 # Any jitter measurement strictly greater than this value (in ms) is an anomaly.
 JITTER_THRESHOLD: float = 5.0
+# A latency increase (in ms) greater than this is an anomaly (bufferbloat delta).
+BUFFERBLOAT_DELTA_THRESHOLD: float = 75.0
+# Latency (in ms) during download/upload that is an anomaly.
+LATENCY_UNDER_LOAD_THRESHOLD: float = 100.0
+# Packet loss percentage from the speedtest that is an anomaly.
+SPEEDTEST_PACKET_LOSS_THRESHOLD: float = 0.5
 
 # --- Speed Test Thresholds (in Mbps) ---
 # Set separate thresholds for speed tests. Anomalies are values strictly LESS than these.

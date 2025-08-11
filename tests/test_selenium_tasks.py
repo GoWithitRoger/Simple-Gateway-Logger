@@ -1,6 +1,6 @@
 import os
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 from selenium.common.exceptions import TimeoutException
@@ -26,9 +26,10 @@ def mock_driver():
 # --- Tests for run_ping_test_task ---
 
 
+@patch("builtins.open", new_callable=mock_open)
 @patch("main.time.sleep")
 @patch("main.WebDriverWait")
-def test_ping_task_success(mock_wait, mock_sleep, mock_driver):
+def test_ping_task_success(mock_wait, mock_sleep, mock_open_file, mock_driver):
     """Tests the happy path for the gateway ping test."""
     mock_target_input = MagicMock()
     mock_ping_button = MagicMock()
@@ -44,13 +45,17 @@ def test_ping_task_success(mock_wait, mock_sleep, mock_driver):
         mock_ping_button,
         mock_progress_element,
     ]
-    # WebDriverWait(...).until(...) should return the mock target input
-    mock_wait.return_value.until.return_value = mock_target_input
+    # WebDriverWait(...).until(...) should first return the input, then the progress element,
+    # then True for the lambda condition that checks for "ping statistics".
+    mock_wait.return_value.until.side_effect = [
+        mock_target_input,  # visibility_of_element_located for input
+        mock_progress_element,  # presence_of_element_located for progress
+        True,  # lambda condition satisfied
+    ]
 
     results = run_ping_test_task(mock_driver)
 
     mock_driver.get.assert_called_with("http://192.168.1.254/cgi-bin/diag.ha")
-    mock_wait.assert_called_once()
     mock_driver.execute_script.assert_any_call("arguments[0].click();", mock_ping_button)
     assert results is not None
     assert results["gateway_loss_percentage"] == 0.0
@@ -66,12 +71,17 @@ def test_ping_task_timeout_exception(mock_wait, mock_sleep, mock_driver):
     assert results is None
 
 
+@patch("builtins.open", new_callable=mock_open)
 @patch("main.time.sleep")
-def test_ping_task_empty_results(mock_sleep, mock_driver):
+@patch("main.WebDriverWait")
+def test_ping_task_empty_results(mock_wait, mock_sleep, mock_open_file, mock_driver):
     """Tests that the function returns None if the result text is empty."""
     mock_progress_element = MagicMock()
     mock_progress_element.get_attribute.return_value = ""
+    # find_element used to click Ping and later to access progress in the lambda
     mock_driver.find_element.return_value = mock_progress_element
+    # First wait returns the target input, second returns the progress element, third True
+    mock_wait.return_value.until.side_effect = [MagicMock(), mock_progress_element, True]
 
     results = run_ping_test_task(mock_driver)
     assert results is None
@@ -110,8 +120,7 @@ def test_speed_test_task_success(mock_wait, mock_sleep, mock_driver):
     mock_wait.return_value.until.side_effect = [
         TimeoutException("No password field"),  # First wait for password fails
         MagicMock(),  # Second wait for run button succeeds
-        MagicMock(),  # Third wait for run button to be clickable after test
-        mock_table,  # Fourth wait for results table
+        mock_table,  # Third wait for results table visibility
     ]
 
     results = run_speed_test_task(mock_driver, "test_code")
@@ -135,9 +144,8 @@ def test_speed_test_task_login_required(mock_wait, mock_sleep, mock_driver):
     # Simulate the sequence of waits
     mock_wait.return_value.until.side_effect = [
         mock_password_input,  # First wait finds password field
-        mock_run_button,  # Second wait finds run button
-        mock_run_button,  # Third wait for button to be clickable after test
-        mock_results_table,  # Fourth wait for results table
+        mock_run_button,  # Second wait finds run button (clickable)
+        mock_results_table,  # Third wait for results table visibility
     ]
     mock_driver.find_element.return_value = mock_continue_button
 
