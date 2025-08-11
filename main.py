@@ -520,11 +520,17 @@ def run_speed_test_task(driver: WebDriver, access_code: str) -> Optional[SpeedRe
         # Wait directly for the results table to appear
         # instead of relying on the run button's state
         print("Waiting for gateway results table...")
-        table_selector = (By.CSS_SELECTOR, "table.grid.table100")
-        table = WebDriverWait(driver, 90).until(EC.visibility_of_element_located(table_selector))
-        print("Gateway speed test complete. Parsing results...")
+        # Use the wait only to confirm the table is ready
+        WebDriverWait(driver, 90).until(
+            EC.visibility_of_element_located((By.CSS_SELECTOR, "table.grid.table100"))
+        )
 
+        print("Gateway speed test complete. Parsing results...")
         results: SpeedResults = {}
+
+        # THE FIX: Re-find the table now to get a fresh reference
+        table = driver.find_element(By.CSS_SELECTOR, "table.grid.table100")
+
         rows = table.find_elements(By.TAG_NAME, "tr")
         for row in rows:
             cols = row.find_elements(By.TAG_NAME, "td")

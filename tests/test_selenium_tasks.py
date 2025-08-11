@@ -115,12 +115,13 @@ def test_speed_test_task_success(mock_wait, mock_sleep, mock_driver):
     mock_table = MagicMock()
     mock_table.find_elements.return_value = [mock_row_down, mock_row_up]
 
-    mock_driver.find_element.return_value = MagicMock()  # for run button
+    # This mock will now handle the final table find, after the wait confirms visibility
+    mock_driver.find_element.return_value = mock_table
 
     mock_wait.return_value.until.side_effect = [
         TimeoutException("No password field"),  # First wait for password fails
         MagicMock(),  # Second wait for run button succeeds
-        mock_table,  # Third wait for results table visibility
+        True,  # Third wait for results table visibility (return value is ignored)
     ]
 
     results = run_speed_test_task(mock_driver, "test_code")
