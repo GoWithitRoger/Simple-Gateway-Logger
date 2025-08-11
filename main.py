@@ -496,6 +496,9 @@ def run_ping_test_task(driver: WebDriver) -> Optional[GatewayPingResults]:
         return None
 
 
+# main.py
+
+
 def run_speed_test_task(driver: WebDriver, access_code: str) -> Optional[SpeedResults]:
     """
     Automates the gateway speed test, returning numerical values for speeds.
@@ -509,28 +512,28 @@ def run_speed_test_task(driver: WebDriver, access_code: str) -> Optional[SpeedRe
             )
             print("Device Access Code required. Attempting to log in...")
             password_input.send_keys(access_code)
-            driver.find_element(By.NAME, "Continue").click()
-            time.sleep(2)
+
+            # Use JavaScript click to ensure reliability on this page
+            continue_button = driver.find_element(By.NAME, "Continue")
+            driver.execute_script("arguments[0].click();", continue_button)
+
         except TimeoutException:
             print("Already logged in or no password required for gateway speed test.")
 
         run_button = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.NAME, "run")))
         run_button.click()
+
         print("Gateway speed test initiated. This will take up to 90 seconds...")
-        # Wait directly for the results table to appear
-        # instead of relying on the run button's state
-        print("Waiting for gateway results table...")
-        # Use the wait only to confirm the table is ready
+        print("Waiting for gateway results table to populate...")
         WebDriverWait(driver, 90).until(
-            EC.visibility_of_element_located((By.CSS_SELECTOR, "table.grid.table100"))
+            EC.text_to_be_present_in_element(
+                (By.CSS_SELECTOR, "table.grid.table100 tr:nth-child(2)"), "downstream"
+            )
         )
 
         print("Gateway speed test complete. Parsing results...")
         results: SpeedResults = {}
-
-        # THE FIX: Re-find the table now to get a fresh reference
         table = driver.find_element(By.CSS_SELECTOR, "table.grid.table100")
-
         rows = table.find_elements(By.TAG_NAME, "tr")
         for row in rows:
             cols = row.find_elements(By.TAG_NAME, "td")
@@ -540,7 +543,7 @@ def run_speed_test_task(driver: WebDriver, access_code: str) -> Optional[SpeedRe
                     speed = float(cols[2].text)
                     if "downstream" in direction and "downstream_speed" not in results:
                         results["downstream_speed"] = speed
-                    elif "upstream" in direction and "upstream_speed" not in results:
+                    if "upstream" in direction and "upstream_speed" not in results:
                         results["upstream_speed"] = speed
                 except (ValueError, IndexError):
                     continue
@@ -548,7 +551,6 @@ def run_speed_test_task(driver: WebDriver, access_code: str) -> Optional[SpeedRe
                 break
         return results if results else None
     except Exception as e:
-        # Just log the error and return. Don't try to interact with a potentially dead driver.
         print(f"An error occurred during the task: {e}")
         return None
 
@@ -801,35 +803,46 @@ def perform_checks() -> None:
         if local_speed_results:
             master_results.update(local_speed_results)
 
-    # --- Run Gateway Tests (Selenium Required) ---
+    # --- Run Gateway Tests (Selenium Required) in a single session ---
     should_run_gateway_speed_test = (
         config.RUN_GATEWAY_SPEED_TEST_INTERVAL > 0
         and run_counter % config.RUN_GATEWAY_SPEED_TEST_INTERVAL == 0
     )
-    if should_run_gateway_speed_test and not DEVICE_ACCESS_CODE:
-        DEVICE_ACCESS_CODE = get_access_code()
 
-    chrome_options = Options()
-    if config.HEADLESS_MODE:
-        chrome_options.add_argument("--headless")
-    chrome_options.add_argument("--window-size=1280,1024")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
+    # Only start a session if there's a gateway test to run
+    # (The ping test is always assumed to run if any gateway test runs)
+    if should_run_gateway_speed_test:
+        if not DEVICE_ACCESS_CODE:
+            DEVICE_ACCESS_CODE = get_access_code()
 
-    # The 'try...except' is removed, as the context manager handles its own errors.
-    with managed_webdriver_session(chrome_options, debug_log) as driver:
-        if driver:
-            # Safely run tasks if the driver was created successfully
-            debug_log.log("run_ping_test_task: START")
-            master_results.update(run_ping_test_task(driver) or {})
-            debug_log.log("run_ping_test_task: END")
-            if should_run_gateway_speed_test:
-                debug_log.log("run_speed_test_task: START")
-                master_results.update(run_speed_test_task(driver, DEVICE_ACCESS_CODE) or {})
-                debug_log.log("run_speed_test_task: END")
-        else:
-            # This 'else' block will run if the context manager yields None
-            print("Skipping gateway tests because WebDriver session failed to start.")
+        chrome_options = Options()
+        if config.HEADLESS_MODE:
+            chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--window-size=1280,1024")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+
+        with managed_webdriver_session(chrome_options, debug_log) as driver:
+            if driver:
+                # --- Establish session on the main page FIRST ---
+                print(
+                    f"Navigating to main gateway page to establish session: {config.GATEWAY_URL}"
+                )
+                driver.get(config.GATEWAY_URL)
+                time.sleep(3)  # Wait for main page to load
+
+                # --- Task 1: Gateway Ping Test ---
+                debug_log.log("run_ping_test_task: START")
+                master_results.update(run_ping_test_task(driver) or {})
+                debug_log.log("run_ping_test_task: END")
+
+                # --- Task 2: Gateway Speed Test ---
+                if should_run_gateway_speed_test:
+                    debug_log.log("run_speed_test_task: START")
+                    master_results.update(run_speed_test_task(driver, DEVICE_ACCESS_CODE) or {})
+                    debug_log.log("run_speed_test_task: END")
+            else:
+                print("Skipping gateway tests because WebDriver session failed to start.")
 
     # --- Bufferbloat calculation (download/upload deltas relative to idle WAN RTT) ---
     idle_latency = master_results.get("local_wan_rtt_avg_ms")
@@ -851,7 +864,6 @@ def perform_checks() -> None:
     log_results(master_results)
     print("\n" + "=" * 60 + "\n")
 
-    # ADD THIS LINE:
     if schedule.jobs:
         _nr = schedule.next_run()
         if _nr is not None:

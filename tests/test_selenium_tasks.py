@@ -153,7 +153,10 @@ def test_speed_test_task_login_required(mock_wait, mock_sleep, mock_driver):
     run_speed_test_task(mock_driver, "test_code")
 
     mock_password_input.send_keys.assert_called_with("test_code")
-    mock_continue_button.click.assert_called_once()
+    # App uses JavaScript click for reliability
+    mock_driver.execute_script.assert_called_with(
+        "arguments[0].click();", mock_continue_button
+    )
     mock_run_button.click.assert_called_once()
 
 

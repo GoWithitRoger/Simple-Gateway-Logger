@@ -62,8 +62,9 @@ def test_managed_webdriver_session_handles_missing_pid_gracefully() -> None:
 
 
 def test_perform_checks_uses_context_manager_once(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Reduce side-effects by disabling optional tests in config
-    monkeypatch.setattr(config, "RUN_GATEWAY_SPEED_TEST_INTERVAL", 0, raising=False)
+    # Configure to ensure the gateway session is actually invoked once
+    monkeypatch.setattr(config, "RUN_GATEWAY_SPEED_TEST_INTERVAL", 1, raising=False)
+    monkeypatch.setattr(main, "run_counter", 0, raising=False)
     monkeypatch.setattr(config, "RUN_LOCAL_PING_TEST", False, raising=False)
     monkeypatch.setattr(config, "RUN_LOCAL_GATEWAY_PING_TEST", False, raising=False)
     monkeypatch.setattr(config, "RUN_LOCAL_SPEED_TEST", False, raising=False)
@@ -75,6 +76,8 @@ def test_perform_checks_uses_context_manager_once(monkeypatch: pytest.MonkeyPatc
 
     # Stub Selenium tasks called inside the context
     monkeypatch.setattr(main, "run_ping_test_task", lambda driver: {})
+    monkeypatch.setattr(main, "get_access_code", lambda: "dummy")
+    monkeypatch.setattr(main, "run_speed_test_task", lambda driver, code: {})
 
     calls = SimpleNamespace(count=0)
 
