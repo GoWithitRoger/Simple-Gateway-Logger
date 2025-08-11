@@ -13,9 +13,13 @@ By comparing gateway-to-WAN tests against local-machine-to-WAN tests, you can be
 - Runs gateway-based Ping tests to measure the quality of the direct ISP connection.
 - Optionally runs a gateway-based Speed Test.
 - Runs local Ping tests from the machine executing the script to both the gateway and the internet.
-- Runs local Speed Tests using the **official Ookla Speedtest CLI** for accurate, reliable results.
+- Runs local Speed Tests using the **official Ookla Speedtest CLI** for accurate, reliable results:
+  - Download & Upload Bandwidth
+  - Ping, Jitter, and Packet Loss
+  - Bufferbloat (latency under load) with calculated delta vs. idle latency
 - Runs in headless mode, so no browser window is required.
 - Schedules tests to run at a configurable interval.
+- Provides color-coded console output, highlighting anomalous results (e.g., high latency, packet loss) for at-a-glance diagnosis.
 - Appends combined results to a single, local CSV log file, creating headers if the file is new or empty.
 - Captures detailed Wi-Fi metrics on macOS (signal, noise, channel, etc.) - see the [Advanced Configuration](#advanced-configuration) section for details.
 - All configuration is organized in the `config.py` file.
@@ -51,6 +55,7 @@ All configuration has been moved to the **`config.py`** file for easy editing.
 - `LOG_FILE`: The name of the CSV file for storing results.
 - `RUN_INTERVAL_MINUTES`: How often the script should run.
 - `HEADLESS_MODE`: Set to `True` to run the browser invisibly in the background.
+- `ENABLE_DEBUG_LOGGING`: Set to `True` to include verbose debug logs in the console and log output.
 
 
 ### Gateway Test Configuration
@@ -66,6 +71,16 @@ All configuration has been moved to the **`config.py`** file for easy editing.
 - `RUN_LOCAL_PING_TEST`: Set to `True` to run a ping test from your computer to the `PING_TARGET`.
 - `RUN_LOCAL_SPEED_TEST`: Set to `True` to run a speed test from your computer using the Ookla CLI.
 - `RUN_LOCAL_GATEWAY_PING_TEST`: Set to `True` to run a ping test from your computer to the gateway.
+
+### Anomaly Highlighting & Thresholds
+The console can color-highlight anomalous results to make issues obvious at a glance. You can toggle highlighting and configure thresholds in `config.py`:
+
+- Enable/disable highlighting.
+- Thresholds for packet loss, latency, and jitter.
+- Thresholds for download/upload speeds.
+- Bufferbloat detection: compares latency under load to idle latency using a configurable delta.
+
+Adjust these settings to match your network expectations and noise tolerance.
 
 ### Important: Handling the Device Access Code
 The gateway speed test requires your gateway's **Device Access Code** to log in. To store this securely, the script uses an environment variable.
