@@ -5,6 +5,8 @@ import subprocess
 import sys
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 # Ensure the main module can be imported
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -170,3 +172,29 @@ def test_wifi_diagnostics_failure(mock_run):
     assert results["wifi_rssi"] == "N/A"
     assert results["wifi_noise"] == "N/A"
     assert results["wifi_bssid"] == "N/A"
+
+
+@patch("main.subprocess.run")
+@pytest.mark.parametrize(
+    "tx_key",
+    [
+        "Tx Rate",
+        "TxRate",
+        "Last Tx Rate",
+        "Max PHY Rate",
+    ],
+)
+def test_wifi_diagnostics_tx_rate_variants(mock_run, tx_key):
+    """Ensure tx rate is parsed correctly across multiple wdutil key variants."""
+    # Build wdutil output with the variant key
+    wd_output = f"RSSI: -55\nNoise: -90\n{tx_key}: 866\nChannel: 149,80"
+    route_output = "gateway: 192.168.1.1"
+    arp_output = "? (192.168.1.1) at a1:b2:c3:d4:e5:f6 on en0 ifscope [ethernet]"
+    mock_run.side_effect = [
+        MagicMock(stdout=wd_output, returncode=0, stderr=""),  # wdutil
+        MagicMock(stdout=route_output, returncode=0, stderr=""),  # route
+        MagicMock(stdout="", returncode=0, stderr=""),  # ping
+        MagicMock(stdout=arp_output, returncode=0, stderr=""),  # arp
+    ]
+    results = run_wifi_diagnostics_task()
+    assert results["wifi_tx_rate"] == "866"
