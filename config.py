@@ -10,7 +10,7 @@ RUN_INTERVAL_MINUTES: int = 5
 # Set to True to run the browser in headless mode (no visible UI).
 HEADLESS_MODE: bool = True
 # Set to True to enable verbose, high-resolution debug logging for troubleshooting.
-ENABLE_DEBUG_LOGGING: bool = False
+ENABLE_DEBUG_LOGGING: bool = True
 
 # --- Gateway Configuration ---
 # The base URL for your AT&T gateway.
