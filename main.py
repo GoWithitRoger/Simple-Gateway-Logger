@@ -965,28 +965,31 @@ def perform_checks() -> None:
     log_results(master_results)
     print("\n" + "=" * 60 + "\n")
 
-    if schedule.jobs:
-        _nr = schedule.next_run()
-        if _nr is not None:
-            next_run_time = _nr.strftime("%Y-%m-%d %H:%M:%S")
-            print(f"Next test is scheduled for: {next_run_time}")
-
 
 # --- Scheduler ---
 def main() -> None:
     """Sets up the schedule and runs the main application loop."""
     print("--- Simple Gateway Logger Starting ---")
 
-    # 1. Schedule the job to run every X minutes. This sets the timeline.
+    # 1. Schedule the job to run every X minutes.
     schedule.every(config.RUN_INTERVAL_MINUTES).minutes.do(perform_checks)
 
-    # 2. Manually run the job once immediately.
-    #    The next scheduled run will still be based on the timeline set above.
+    # 2. Manually run the job once immediately at startup.
     perform_checks()
+
+    last_printed_next_run: Optional[datetime] = None
 
     # 3. Start the main loop to handle all subsequent scheduled runs.
     while True:
         schedule.run_pending()
+
+        # Check the scheduler's next run time and print it if it has changed.
+        # This ensures the printed time is always the correct, future-scheduled time.
+        current_next_run = schedule.next_run()
+        if current_next_run and current_next_run != last_printed_next_run:
+            print(f"Next test is scheduled for: {current_next_run.strftime('%Y-%m-%d %H:%M:%S')}")
+            last_printed_next_run = current_next_run
+
         time.sleep(1)
 
 
