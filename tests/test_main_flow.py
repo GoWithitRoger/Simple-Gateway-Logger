@@ -51,6 +51,8 @@ def mock_tasks():
 def test_perform_checks_local_ping_toggle(mock_tasks, monkeypatch):
     """Tests that RUN_LOCAL_PING_TEST config toggles the task call."""
     monkeypatch.setattr(config_module, "RUN_LOCAL_GATEWAY_PING_TEST", False)
+    # Disable LAN bufferbloat so it doesn't call run_local_ping_task later
+    monkeypatch.setattr(config_module, "RUN_LAN_BUFFERBLOAT_TEST", False)
 
     monkeypatch.setattr(config_module, "RUN_LOCAL_PING_TEST", True)
     perform_checks()
@@ -66,6 +68,8 @@ def test_perform_checks_local_ping_toggle(mock_tasks, monkeypatch):
 def test_perform_checks_local_gateway_ping_toggle(mock_tasks, monkeypatch):
     """Tests that RUN_LOCAL_GATEWAY_PING_TEST config toggles the task call."""
     monkeypatch.setattr(config_module, "RUN_LOCAL_PING_TEST", False)
+    # Disable LAN bufferbloat so it doesn't call run_local_ping_task later
+    monkeypatch.setattr(config_module, "RUN_LAN_BUFFERBLOAT_TEST", False)
 
     monkeypatch.setattr(config_module, "RUN_LOCAL_GATEWAY_PING_TEST", True)
     perform_checks()
