@@ -1,7 +1,6 @@
 <p align="left"> <img src="./icon.svg" alt="Simple Gateway Logger" width="150"> </p>
 
 # Simple Gateway Logger
-
 This script automates running diagnostic network tests from your AT&T fiber gateway and your local machine. It logs the results to a CSV file, helping identify and troubleshoot intermittent network issues.
 
 By comparing gateway-to-WAN tests against local-machine-to-WAN tests, you can better distinguish between potential ISP issues and local network problems (e.g., Wi-Fi interference, router performance).
@@ -37,9 +36,7 @@ If you don't have Homebrew, [install it first](https://brew.sh/). Then, run the 
     
 
 ## Usage and Setup
-
 Simply run the following command in a terminal window:
-    
     
         uv run main.py
     ```uv` will automatically read the required dependencies from the top of the `main.py` file, create a temporary environment, and run the script.
