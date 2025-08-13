@@ -284,6 +284,10 @@ def log_results(all_data: Mapping[str, str | float | int | None]) -> None:
         "WiFi_RSSI": all_data.get("wifi_rssi", "N/A"),
         "WiFi_Noise": all_data.get("wifi_noise", "N/A"),
         "WiFi_TxRate_Mbps": all_data.get("wifi_tx_rate", "N/A"),
+        # LAN bufferbloat metrics
+        "LAN_Idle_RTT_ms": all_data.get("lan_idle_rtt_ms"),
+        "LAN_Under_Load_RTT_ms": all_data.get("lan_under_load_rtt_ms"),
+        "LAN_Bufferbloat_ms": all_data.get("lan_bufferbloat_ms"),
     }
 
     # --- CSV Logging ---
@@ -454,6 +458,25 @@ def log_results(all_data: Mapping[str, str | float | int | None]) -> None:
     print(f"  Noise Level:                {data_points['WiFi_Noise']}")
     print(f"  Channel/Band:               {data_points['WiFi_Channel']}")
     print(f"  Transmit Rate:              {data_points['WiFi_TxRate_Mbps']} Mbps")
+
+    # --- LAN Bufferbloat Test ---
+    print("\n--- LAN Bufferbloat Test ---")
+    lan_idle = format_value(
+        data_points["LAN_Idle_RTT_ms"],
+        "ms",
+        None,
+        default_color=Colors.CYAN,
+        precision=3,
+    )
+    print(f"  Idle LAN RTT:               {lan_idle}")
+
+    lan_bloat = format_value(
+        data_points["LAN_Bufferbloat_ms"],
+        "ms",
+        config.LAN_BUFFERBLOAT_DELTA_THRESHOLD,
+        precision=2,
+    )
+    print(f"  LAN Bufferbloat Delta:      {lan_bloat}")
     print("------------------------------------")
     full_path = os.path.abspath(config.LOG_FILE)
     print(f"Results appended to: {full_path}")
@@ -675,6 +698,78 @@ def run_local_speed_test_task() -> Optional[SpeedResults]:
     return None
 
 
+# --- LAN Bufferbloat Test ---
+def run_lan_bufferbloat_task() -> dict[str, float | None]:
+    """
+    Measures LAN-specific bufferbloat by pinging a local server
+    with and without a concurrent iperf3 load test.
+    """
+    if not config.LAN_TEST_TARGET_IP:
+        print("Warning: LAN_TEST_TARGET_IP not set. Skipping LAN bufferbloat test.")
+        return {}
+
+    target_ip = config.LAN_TEST_TARGET_IP
+    duration = config.LAN_BUFFERBLOAT_TEST_DURATION
+    results: dict[str, float | None] = {
+        "lan_idle_rtt_ms": None,
+        "lan_under_load_rtt_ms": None,
+        "lan_bufferbloat_ms": None,
+    }
+
+    print(f"--- Starting LAN Bufferbloat Test against {target_ip} ---")
+
+    try:
+        # 1. Measure Idle Latency
+        print("Measuring idle LAN latency...")
+        idle_ping_results = run_local_ping_task(target_ip)
+        results["lan_idle_rtt_ms"] = idle_ping_results.get("rtt_avg_ms")
+        if results["lan_idle_rtt_ms"] is None:
+            print("Error: Could not measure idle LAN latency. Aborting test.")
+            return {}
+
+        # 2. Start iperf3 load in the background
+        print(f"Starting iperf3 load test for {duration} seconds...")
+        iperf_command = ["iperf3", "-c", target_ip, "-t", str(duration)]
+        iperf_process = subprocess.Popen(
+            iperf_command,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+        # Give iperf a moment to start before pinging
+        time.sleep(1)
+
+        # 3. Measure Latency Under Load (for the remaining duration)
+        print("Measuring LAN latency under load...")
+        ping_duration = max(1, duration - 1)
+        # We use a different ping command here to control duration
+        ping_command = ["ping", "-c", str(ping_duration), "-i", "1", target_ip]
+        under_load_ping_process = subprocess.run(
+            ping_command, capture_output=True, text=True, timeout=duration + 5
+        )
+        under_load_ping_results = parse_local_ping_results(under_load_ping_process.stdout)
+        results["lan_under_load_rtt_ms"] = under_load_ping_results.get("rtt_avg_ms")
+
+        # 4. Wait for iperf3 to finish
+        iperf_process.wait(timeout=5)
+        print("LAN load test finished.")
+
+        # 5. Calculate LAN Bufferbloat
+        if results["lan_under_load_rtt_ms"] is not None:
+            results["lan_bufferbloat_ms"] = (
+                results["lan_under_load_rtt_ms"] - results["lan_idle_rtt_ms"]
+            )
+
+        return results
+
+    except FileNotFoundError:
+        print("Error: 'iperf3' command not found. Please run 'brew install iperf3'.")
+        return {}
+    except Exception as e:
+        print(f"An error occurred during the LAN bufferbloat test: {e}")
+        return {}
+
+
 def run_wifi_diagnostics_task() -> WifiDiagnostics:
     """
     Uses a hybrid approach: wdutil for live Wi-Fi stats (signal, etc.) and
@@ -802,6 +897,12 @@ def perform_checks() -> None:
         debug_log.log("run_local_speed_test_task: END")
         if local_speed_results:
             master_results.update(local_speed_results)
+    if getattr(config, "RUN_LAN_BUFFERBLOAT_TEST", False):
+        debug_log.log("run_lan_bufferbloat_task: START")
+        lan_bloat_results = run_lan_bufferbloat_task()
+        debug_log.log("run_lan_bufferbloat_task: END")
+        if lan_bloat_results:
+            master_results.update(lan_bloat_results)
 
     # --- Run Gateway Tests (Selenium Required) in a single session ---
     should_run_gateway_speed_test = (
@@ -872,17 +973,27 @@ def perform_checks() -> None:
 
 
 # --- Scheduler ---
+def main() -> None:
+    """Sets up the schedule and runs the main application loop."""
+    print("--- Simple Gateway Logger Starting ---")
+
+    # 1. Schedule the job to run every X minutes. This sets the timeline.
+    schedule.every(config.RUN_INTERVAL_MINUTES).minutes.do(perform_checks)
+
+    # 2. Manually run the job once immediately.
+    #    The next scheduled run will still be based on the timeline set above.
+    perform_checks()
+
+    # 3. Start the main loop to handle all subsequent scheduled runs.
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
+
+
 if __name__ == "__main__":
     if getattr(config, "ENABLE_DEBUG_LOGGING", False):
         logging.basicConfig()
         schedule_logger = logging.getLogger("schedule")
         schedule_logger.setLevel(level=logging.DEBUG)
-    perform_checks()
-    schedule.every(config.RUN_INTERVAL_MINUTES).minutes.do(perform_checks)
-    if schedule.jobs:
-        next_run_datetime = schedule.jobs[0].next_run
-        print(f"Next test is scheduled for: {next_run_datetime.strftime('%Y-%m-%d %H:%M:%S')}")
-    print("Press Ctrl+C to exit.")
-    while True:
-        schedule.run_pending()
-        time.sleep(1)
+
+    main()

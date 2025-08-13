@@ -58,3 +58,14 @@ LOCAL_DOWNSTREAM_SPEED_THRESHOLD: float = 225.0
 LOCAL_UPSTREAM_SPEED_THRESHOLD: float = 225.0
 GATEWAY_DOWNSTREAM_SPEED_THRESHOLD: float = 300.0
 GATEWAY_UPSTREAM_SPEED_THRESHOLD: float = 300.0
+
+# --- LAN Bufferbloat Test Configuration ---
+# Set to True to run the LAN-specific bufferbloat test against another
+# machine on your local network. Requires `iperf3` on both machines.
+RUN_LAN_BUFFERBLOAT_TEST: bool = True
+# The IP address of the second machine on your LAN running `iperf3 -s`.
+LAN_TEST_TARGET_IP: str = "192.168.4.135"  # <--- CHANGE THIS TO YOUR SERVER's IP
+# How long (in seconds) the LAN load test should run.
+LAN_BUFFERBLOAT_TEST_DURATION: int = 10
+# Threshold for LAN bufferbloat delta (in ms).
+LAN_BUFFERBLOAT_DELTA_THRESHOLD: float = 50.0
