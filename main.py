@@ -971,8 +971,9 @@ def main() -> None:
     """Sets up the schedule and runs the main application loop."""
     print("--- Simple Gateway Logger Starting ---")
 
-    # 1. Schedule the job to run every X minutes.
-    schedule.every(config.RUN_INTERVAL_MINUTES).minutes.do(perform_checks)
+    # 1. Schedule the job to run every X minutes at the start of the minute.
+    #    This ensures a consistent, fixed-rate interval.
+    schedule.every(config.RUN_INTERVAL_MINUTES).minutes.at(":00").do(perform_checks)
 
     # 2. Manually run the job once immediately at startup.
     perform_checks()
