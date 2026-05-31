@@ -1,6 +1,8 @@
-# Contributing Guide (AI & Human)
+# Contributing Guide
 
-Optimized for quick, safe contributions. Keep changes small, fully-typed, lint-clean, and tested.
+Human and AI-assisted contributions are welcome. Review generated changes the same way as hand-written changes: keep them small, typed, lint-clean, tested, and free of secrets.
+
+This project has been developed with help from AI coding tools including Claude Code, Windsurf, and Codex. Human judgment owns the scope, defaults, safety posture, and final review.
 
 
 ## Project Specification
@@ -13,35 +15,22 @@ Optimized for quick, safe contributions. Keep changes small, fully-typed, lint-c
 - **Config**: `config.py`
 - **Secrets**: `.env` (loaded via `python-dotenv`)
 - **External Tool**: `speedtest` (via `brew`)
+- **Agent Guide**: `AGENTS.md`
 
 
 ## Core Commands
 - **Sync Dependencies**: `uv sync`
 - **Run Application**: `uv run python main.py`
 - **Run Tests**: `uv run pytest -q`
-- **Check & Fix All**: `uv run ruff check --fix . && uv run ruff format . && uv run ty check`
+- **Check & Fix All**: `uv run ruff check --fix . && uv run ruff format . && uv run ty check && uv run pytest -q`
 - **Add Dependency**: `uv add <package>`
 * * *
 
 
 ## Zero-Setup Execution (`main.py`)
-To enable zero-setup execution, `main.py` uses TOML frontmatter to declare its runtime dependencies. This allows running the app via `uv run python main.py` without requiring a prior `uv sync`.
+`main.py` uses `uv` script dependency metadata so the app can run with `uv run python main.py` without a prior `uv sync`.
 
-The dependencies in the `main.py` frontmatter must be kept in sync with the core application dependencies in `pyproject.toml`.
-
-**Example:**
-```Python
-# /// script
-# dependencies = [
-#   "python-dotenv",
-#   "requests<3",
-# ]
-# ///
-import requests
-# ... app code
-``` 
-
-**Constraint**: This frontmatter method is only for the application's entry point (`main.py`). **All runtime dependencies required by `main.py` and any local modules it imports** (e.g., helper.py) *must* be declared in the frontmatter of `main.py`.
+Keep the runtime dependencies in `main.py` in sync with the core application dependencies in `pyproject.toml`.
 * * *
 
 
@@ -53,7 +42,7 @@ import requests
     - `uv run ruff check --fix . && uv run ruff format .`
       - (see [pyproject.toml](pyproject.toml) for ruff criteria)
     - `uv run ty check`
-    - `uv run pytest`
+    - `uv run pytest -q`
 
 4. The PR must have a clear summary of the problem and solution.
 5. Confirm there is no scope creep.
