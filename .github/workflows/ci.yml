@@ -7,7 +7,7 @@ on:
     branches: [ main, master ]
 
 jobs:
-  lint-and-typecheck:
+  checks:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -27,5 +27,11 @@ jobs:
       - name: Ruff (lint)
         run: uv run ruff check
 
+      - name: Ruff (format)
+        run: uv run ruff format . --check
+
       - name: Type check (ty)
         run: uv run ty check
+
+      - name: Tests
+        run: uv run pytest -q
