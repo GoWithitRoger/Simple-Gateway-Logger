@@ -724,6 +724,8 @@ def run_lan_bufferbloat_task() -> dict[str, float | None]:
 
     print(f"--- Starting LAN Bufferbloat Test against {target_ip} ---")
 
+    iperf_process: Optional[subprocess.Popen[bytes]] = None
+
     try:
         # 1. Measure Idle Latency
         print("Measuring idle LAN latency...")
@@ -757,7 +759,7 @@ def run_lan_bufferbloat_task() -> dict[str, float | None]:
         results["lan_under_load_rtt_ms"] = under_load_ping_results.get("rtt_avg_ms")
 
         # 4. Wait for iperf3 to finish
-        iperf_process.wait(timeout=5)
+        iperf_process.wait(timeout=duration + 5)
         print("LAN load test finished.")
 
         # 5. Calculate LAN Bufferbloat
@@ -774,6 +776,13 @@ def run_lan_bufferbloat_task() -> dict[str, float | None]:
     except Exception as e:
         print(f"An error occurred during the LAN bufferbloat test: {e}")
         return {}
+    finally:
+        if iperf_process and iperf_process.poll() is None:
+            try:
+                iperf_process.terminate()
+                iperf_process.wait(timeout=5)
+            except Exception:
+                iperf_process.kill()
 
 
 def run_wifi_diagnostics_task() -> WifiDiagnostics:

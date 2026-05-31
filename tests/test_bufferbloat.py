@@ -8,7 +8,7 @@ import pytest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import config
-from main import Colors, log_results, perform_checks
+from main import Colors, log_results, perform_checks, run_lan_bufferbloat_task
 
 
 @patch("builtins.open", new_callable=mock_open)
@@ -123,3 +123,31 @@ def test_perform_checks_computes_bufferbloat(
     passed = args[0]
     assert passed.get("download_bufferbloat_ms") == pytest.approx(35.0)
     assert passed.get("upload_bufferbloat_ms") == pytest.approx(21.0)
+
+
+@patch("main.subprocess.run")
+@patch("main.subprocess.Popen")
+@patch("main.run_local_ping_task")
+@patch("main.time.sleep")
+def test_lan_bufferbloat_waits_for_configured_duration(
+    _sleep,
+    mock_local_ping,
+    mock_popen,
+    mock_run,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(config, "LAN_TEST_TARGET_IP", "192.168.1.50")
+    monkeypatch.setattr(config, "LAN_BUFFERBLOAT_TEST_DURATION", 10)
+
+    mock_local_ping.return_value = {"rtt_avg_ms": 2.0}
+    mock_run.return_value.stdout = (
+        "5 packets transmitted, 5 packets received, 0.0% packet loss\n"
+        "round-trip min/avg/max/stddev = 5.0/8.0/10.0/1.0 ms"
+    )
+    mock_process = mock_popen.return_value
+    mock_process.poll.return_value = 0
+
+    results = run_lan_bufferbloat_task()
+
+    mock_process.wait.assert_called_once_with(timeout=15)
+    assert results["lan_bufferbloat_ms"] == pytest.approx(6.0)
