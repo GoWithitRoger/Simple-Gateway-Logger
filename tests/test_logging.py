@@ -81,6 +81,7 @@ def test_log_results_csv_creation(mock_exists, mock_open_file) -> None:
     assert "Local_Load_Up_ms" in written_header
     assert "Local_Pkt_Loss_Pct" in written_header
     assert MOCK_DATA_COMPLETE["wifi_bssid"] in written_data_row
+    assert '"149,80"' in written_data_row
     # Ensure at least one new value appears in the CSV row with 3-decimal formatting
     assert "75.500" in written_data_row
     assert handle.write.call_count == 2

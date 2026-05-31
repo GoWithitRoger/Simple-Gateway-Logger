@@ -56,6 +56,9 @@ def test_ping_task_success(mock_wait, mock_sleep, mock_open_file, mock_driver):
     results = run_ping_test_task(mock_driver)
 
     mock_driver.get.assert_called_with("http://192.168.1.254/cgi-bin/diag.ha")
+    mock_driver.execute_script.assert_any_call(
+        "arguments[0].value = arguments[1];", mock_target_input, "google.com"
+    )
     mock_driver.execute_script.assert_any_call("arguments[0].click();", mock_ping_button)
     assert results is not None
     assert results["gateway_loss_percentage"] == 0.0

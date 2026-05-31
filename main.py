@@ -8,6 +8,7 @@
 # main.py
 
 # Standard library imports
+import csv
 import getpass
 import json
 import logging
@@ -294,13 +295,12 @@ def log_results(all_data: Mapping[str, str | float | int | None]) -> None:
         f"{v:.3f}" if isinstance(v, float) else "N/A" if v is None else str(v)
         for v in data_points.values()
     ]
-    header = "Timestamp," + ",".join(data_points.keys()) + "\n"
-    log_entry = timestamp + "," + ",".join(csv_values) + "\n"
     write_header = not os.path.exists(config.LOG_FILE) or os.path.getsize(config.LOG_FILE) == 0
-    with open(config.LOG_FILE, "a") as f:
+    with open(config.LOG_FILE, "a", newline="") as f:
+        writer = csv.writer(f)
         if write_header:
-            f.write(header)
-        f.write(log_entry)
+            writer.writerow(["Timestamp", *data_points.keys()])
+        writer.writerow([timestamp, *csv_values])
 
     # --- Console Output Formatting ---
     def format_value(
@@ -489,7 +489,11 @@ def run_ping_test_task(driver: WebDriver) -> Optional[GatewayPingResults]:
         target_input = WebDriverWait(driver, 20).until(
             EC.visibility_of_element_located((By.ID, "webaddress"))
         )
-        driver.execute_script(f"arguments[0].value = '{config.PING_TARGET}';", target_input)
+        driver.execute_script(
+            "arguments[0].value = arguments[1];",
+            target_input,
+            config.PING_TARGET,
+        )
         ping_button = driver.find_element(By.NAME, "Ping")
         driver.execute_script("arguments[0].click();", ping_button)
         print(f"Gateway ping test started for {config.PING_TARGET}.")
