@@ -61,6 +61,8 @@ def log_running_chromedriver_processes(debug_logger: DebugLogger) -> None:
 
     Uses a shell pipeline to filter out the grep process itself.
     """
+    if not getattr(config, "ENABLE_DEBUG_LOGGING", False):
+        return
     try:
         cmd = "ps -ef | grep chromedriver | grep -v grep"
         result = subprocess.run(
@@ -81,6 +83,8 @@ def log_running_chromedriver_processes(debug_logger: DebugLogger) -> None:
 
 def cleanup_old_processes() -> None:
     """Kill lingering chromedriver processes from prior runs (best-effort)."""
+    if not getattr(config, "CLEANUP_STALE_CHROMEDRIVER_PROCESSES", False):
+        return
     try:
         subprocess.run("pkill -f '[c]hromedriver'", shell=True, check=False)
     except Exception:
@@ -92,15 +96,10 @@ def cleanup_old_processes() -> None:
 def managed_webdriver_session(chrome_options: Options, debug_logger: DebugLogger):
     """A self-contained, resilient context manager for Selenium WebDriver.
 
-    It handles pre-emptive cleanup, robust initialization, and guaranteed teardown.
+    It handles opt-in pre-emptive cleanup, robust initialization, and guaranteed teardown.
     """
     debug_logger.log("managed_webdriver_session: START")
-    print("Running pre-emptive cleanup of old chromedriver processes...")
-    try:
-        subprocess.run("pkill -f '[c]hromedriver'", shell=True, check=False)
-        print("Cleanup complete.")
-    except Exception as e:
-        print(f"Notice: Pre-emptive cleanup failed. This is non-critical. Error: {e}")
+    cleanup_old_processes()
 
     driver: Optional[WebDriver] = None
     service: Optional[ChromeService] = None
@@ -504,11 +503,14 @@ def run_ping_test_task(driver: WebDriver) -> Optional[GatewayPingResults]:
         results_element = driver.find_element(By.ID, "progress")
         results_text = (results_element.get_attribute("value") or "").strip()
         if results_text:
-            with open("gateway_raw_output.log", "a") as log_file:
-                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                log_file.write(f"--- Log entry from {timestamp} ---\n")
-                log_file.write(results_text + "\n\n")
-            print("Successfully retrieved and logged raw gateway ping results text.")
+            if getattr(config, "LOG_RAW_GATEWAY_OUTPUT", False):
+                with open("gateway_raw_output.log", "a") as log_file:
+                    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    log_file.write(f"--- Log entry from {timestamp} ---\n")
+                    log_file.write(results_text + "\n\n")
+                print("Successfully retrieved and logged raw gateway ping results text.")
+            else:
+                print("Successfully retrieved gateway ping results text.")
         else:
             print("Warning: Gateway ping results text is empty.")
             return None
@@ -783,8 +785,8 @@ def run_wifi_diagnostics_task() -> WifiDiagnostics:
 
     # --- Part 1: Get Signal, Noise, etc. from wdutil ---
     try:
-        # This command requires the sudoers file to be configured for NOPASSWD.
-        command = ["sudo", "wdutil", "info"]
+        # `-n` fails fast instead of prompting if passwordless sudo is not configured.
+        command = ["sudo", "-n", "wdutil", "info"]
         process = subprocess.run(command, capture_output=True, text=True, timeout=10, check=True)
         output = process.stdout
 
@@ -868,17 +870,13 @@ def perform_checks() -> None:
         f"Starting checks (Run #{run_counter})..."
     )
 
-    # Pre-emptive cleanup should run first
-    cleanup_old_processes()
-    # Optionally log existing chromedriver processes after cleanup in debug mode
-    log_running_chromedriver_processes(debug_log)
-
     # --- Run Local Tests (No Browser Required) ---
-    debug_log.log("run_wifi_diagnostics_task: START")
-    wifi_results = run_wifi_diagnostics_task()
-    debug_log.log("run_wifi_diagnostics_task: END")
-    if wifi_results:
-        master_results.update(wifi_results)
+    if getattr(config, "RUN_WIFI_DIAGNOSTICS_TEST", False):
+        debug_log.log("run_wifi_diagnostics_task: START")
+        wifi_results = run_wifi_diagnostics_task()
+        debug_log.log("run_wifi_diagnostics_task: END")
+        if wifi_results:
+            master_results.update(wifi_results)
 
     if config.RUN_LOCAL_PING_TEST:
         debug_log.log("run_local_ping_task (WAN): START")
@@ -910,17 +908,18 @@ def perform_checks() -> None:
         and run_counter % config.RUN_GATEWAY_SPEED_TEST_INTERVAL == 0
     )
 
-    # Only start a session if there's a gateway test to run
-    # (The ping test is always assumed to run if any gateway test runs)
-    if should_run_gateway_speed_test:
-        if not DEVICE_ACCESS_CODE:
+    should_run_gateway_ping_test = getattr(config, "RUN_GATEWAY_PING_TEST", True)
+
+    if should_run_gateway_ping_test or should_run_gateway_speed_test:
+        if should_run_gateway_speed_test and not DEVICE_ACCESS_CODE:
             DEVICE_ACCESS_CODE = get_access_code()
 
         chrome_options = Options()
         if config.HEADLESS_MODE:
             chrome_options.add_argument("--headless")
         chrome_options.add_argument("--window-size=1280,1024")
-        chrome_options.add_argument("--no-sandbox")
+        if getattr(config, "ENABLE_CHROME_NO_SANDBOX", False):
+            chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
 
         with managed_webdriver_session(chrome_options, debug_log) as driver:
@@ -932,10 +931,10 @@ def perform_checks() -> None:
                 driver.get(config.GATEWAY_URL)
                 time.sleep(3)  # Wait for main page to load
 
-                # --- Task 1: Gateway Ping Test ---
-                debug_log.log("run_ping_test_task: START")
-                master_results.update(run_ping_test_task(driver) or {})
-                debug_log.log("run_ping_test_task: END")
+                if should_run_gateway_ping_test:
+                    debug_log.log("run_ping_test_task: START")
+                    master_results.update(run_ping_test_task(driver) or {})
+                    debug_log.log("run_ping_test_task: END")
 
                 # --- Task 2: Gateway Speed Test ---
                 if should_run_gateway_speed_test:

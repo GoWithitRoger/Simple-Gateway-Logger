@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 import main
 
 
-def test_context_manager_runs_pkill_preemptively():
+def test_context_manager_skips_pkill_by_default():
     debug_logger = main.DebugLogger(start_time=time.time())
 
     fake_service = MagicMock()
@@ -25,11 +25,30 @@ def test_context_manager_runs_pkill_preemptively():
         opts = main.Options()
         with main.managed_webdriver_session(opts, debug_logger):
             pass
-        # Pre-emptive cleanup should have been invoked
+        mock_run.assert_not_called()
+
+
+def test_context_manager_runs_pkill_when_cleanup_enabled():
+    debug_logger = main.DebugLogger(start_time=time.time())
+
+    fake_service = MagicMock()
+    fake_service.process = MagicMock()
+    fake_driver = MagicMock()
+
+    with (
+        patch.object(main.config, "CLEANUP_STALE_CHROMEDRIVER_PROCESSES", True),
+        patch("main.subprocess.run") as mock_run,
+        patch.object(main, "ChromeService", return_value=fake_service),
+        patch.object(main.webdriver, "Chrome", return_value=fake_driver),
+        patch.object(main, "log_running_chromedriver_processes"),
+    ):
+        opts = main.Options()
+        with main.managed_webdriver_session(opts, debug_logger):
+            pass
         mock_run.assert_any_call("pkill -f '[c]hromedriver'", shell=True, check=False)
 
 
-def test_context_manager_yields_none_on_setup_failure():
+def test_context_manager_yields_none_on_setup_failure_without_pkill_by_default():
     debug_logger = main.DebugLogger(start_time=time.time())
 
     with (
@@ -42,5 +61,4 @@ def test_context_manager_yields_none_on_setup_failure():
         opts = main.Options()
         with main.managed_webdriver_session(opts, debug_logger) as driver:
             assert driver is None
-        # Ensure pkill was attempted even when setup fails
-        mock_run.assert_any_call("pkill -f '[c]hromedriver'", shell=True, check=False)
+        mock_run.assert_not_called()

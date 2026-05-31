@@ -11,6 +11,9 @@ RUN_INTERVAL_MINUTES: int = 5
 HEADLESS_MODE: bool = True
 # Set to True to enable verbose, high-resolution debug logging for troubleshooting.
 ENABLE_DEBUG_LOGGING: bool = False
+# Set to True to write raw gateway ping output to `gateway_raw_output.log`.
+# Raw output can include network details; leave off unless you need it for debugging.
+LOG_RAW_GATEWAY_OUTPUT: bool = False
 
 # --- Gateway Configuration ---
 # The base URL for your AT&T gateway.
@@ -19,10 +22,17 @@ GATEWAY_URL: str = "http://192.168.1.254"
 DIAG_URL: str = "http://192.168.1.254/cgi-bin/diag.ha"
 # The full URL to the gateway's speed test page.
 SPEED_TEST_URL: str = "http://192.168.1.254/cgi-bin/speed.ha"
+# Set to True to run the gateway's built-in ping diagnostic.
+RUN_GATEWAY_PING_TEST: bool = True
 # How often the gateway speed test runs. For example, a value of 2 means the
 # speed test will run every other time the main checks run.
 # Set to 0 to disable gateway speed tests entirely.
 RUN_GATEWAY_SPEED_TEST_INTERVAL: int = 1
+# Set to True only if ChromeDriver cleanup problems leave old processes behind.
+# This may terminate other ChromeDriver sessions on your machine.
+CLEANUP_STALE_CHROMEDRIVER_PROCESSES: bool = False
+# Set to True only if Chrome fails to start without the flag.
+ENABLE_CHROME_NO_SANDBOX: bool = False
 
 # --- Local Machine Test Configuration ---
 # Set to True to run a ping test from the local machine to the PING_TARGET.
@@ -31,6 +41,9 @@ RUN_LOCAL_PING_TEST: bool = True
 RUN_LOCAL_SPEED_TEST: bool = True
 # Set to True to run a ping test from the local machine to the gateway itself.
 RUN_LOCAL_GATEWAY_PING_TEST: bool = True
+# Set to True to capture macOS Wi-Fi diagnostics via `sudo wdutil info`.
+# This is optional because it requires privileged local system access.
+RUN_WIFI_DIAGNOSTICS_TEST: bool = False
 
 
 # --- Anomaly Detection Configuration ---
@@ -62,9 +75,9 @@ GATEWAY_UPSTREAM_SPEED_THRESHOLD: float = 300.0
 # --- LAN Bufferbloat Test Configuration ---
 # Set to True to run the LAN-specific bufferbloat test against another
 # machine on your local network. Requires `iperf3` on both machines.
-RUN_LAN_BUFFERBLOAT_TEST: bool = True
+RUN_LAN_BUFFERBLOAT_TEST: bool = False
 # The IP address of the second machine on your LAN running `iperf3 -s`.
-LAN_TEST_TARGET_IP: str = "192.168.4.135"  # <--- CHANGE THIS TO YOUR SERVER's IP
+LAN_TEST_TARGET_IP: str = ""
 # How long (in seconds) the LAN load test should run.
 LAN_BUFFERBLOAT_TEST_DURATION: int = 10
 # Threshold for LAN bufferbloat delta (in ms).
