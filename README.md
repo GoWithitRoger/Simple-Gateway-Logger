@@ -8,7 +8,7 @@ ISP, router, Wi-Fi, or client.
 
 If the gateway path is healthy but the local path is not, look closer to the LAN or client device. If both degrade together, you have better evidence for an ISP-facing problem.
 
-I built this for my own setup and maintain it as a hobby project. Other gateway models or network
+This is a hobby project built for one network setup. Other gateway models or network
 environments may need changes.
 
 ## Requirements
