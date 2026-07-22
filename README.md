@@ -6,6 +6,9 @@ A focused macOS diagnostic script for AT&T fiber gateways. It compares gateway-s
 
 If the gateway path is healthy but the local path is not, look closer to the LAN or client device. If both degrade together, you have better evidence for an ISP-facing problem.
 
+This is a personal hobby project maintained on a best-effort basis. It is useful for the setup it was
+built around, but other gateway models and network environments may need adjustments.
+
 ## Requirements
 
 - macOS with Homebrew.
@@ -117,11 +120,7 @@ uv run ty check
 uv run pytest -q
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the full contributor workflow.
-
-For AI coding agents and other automated contributors, see [AGENTS.md](AGENTS.md). This repo keeps scope, commands, safety constraints, and verification expectations explicit so small changes are easier to review.
-
-AI-assisted development is welcome here, with human review and the same checks as hand-written changes.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the small-project contribution workflow.
 
 ## License
 

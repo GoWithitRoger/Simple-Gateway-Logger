@@ -48,8 +48,3 @@ Prefer lint/type/tests for verification. Do not run `uv run python main.py` unle
 - Put agent-specific operational guidance here, not in the README.
 - Keep `main.py` script metadata dependencies in sync with `pyproject.toml`.
 - If behavior changes, update README, CONTRIBUTING, tests, and CI together when relevant.
-- Acknowledge AI assistance plainly and briefly; do not frame the repo as a portfolio project.
-
-## Current AI Tooling Context
-
-This repository has been developed with assistance from AI coding tools including Claude Code, Windsurf, and Codex. Human judgment owns the product scope, defaults, safety posture, and final review.
