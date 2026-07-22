@@ -2,12 +2,14 @@
 
 # Simple Gateway Logger
 
-A focused macOS diagnostic script for AT&T fiber gateways. It compares gateway-side checks with local-machine checks, then logs each check cycle to CSV so intermittent ISP, router, Wi-Fi, and client issues are easier to separate.
+A macOS diagnostic script for AT&T fiber gateways. It compares checks from the gateway with
+checks from the Mac and writes each cycle to CSV. This helps narrow an intermittent problem to the
+ISP, router, Wi-Fi, or client.
 
 If the gateway path is healthy but the local path is not, look closer to the LAN or client device. If both degrade together, you have better evidence for an ISP-facing problem.
 
-This is a personal hobby project maintained on a best-effort basis. It is useful for the setup it was
-built around, but other gateway models and network environments may need adjustments.
+I built this for my own setup and maintain it as a hobby project. Other gateway models or network
+environments may need changes.
 
 ## Requirements
 
@@ -16,7 +18,8 @@ built around, but other gateway models and network environments may need adjustm
 - Google Chrome for Selenium gateway checks. Selenium Manager handles ChromeDriver resolution.
 - Ookla's official `speedtest` CLI for local speed and under-load latency.
 
-This is intentionally not a router-agnostic framework, dashboard, daemon, or replacement for ISP tooling.
+It covers this specific workflow. It is not a router-agnostic framework, dashboard, daemon, or
+replacement for ISP tooling.
 
 ## Quickstart
 
@@ -36,7 +39,7 @@ uv run python main.py
 
 Before leaving it running, review [config.py](config.py). Optional checks such as LAN bufferbloat, raw gateway logs, stale ChromeDriver cleanup, and privileged Wi-Fi diagnostics are off by default.
 
-## What It Logs
+## What it logs
 
 - Gateway ping and optional gateway speed test.
 - Local WAN ping, gateway ping, Ookla speed test, jitter, packet loss, and WAN bufferbloat.
@@ -81,7 +84,7 @@ CSV and raw log files can include local network metadata such as gateway latency
 <details>
 <summary>Optional diagnostics</summary>
 
-### macOS Wi-Fi Metrics
+### macOS Wi-Fi metrics
 
 Set `RUN_WIFI_DIAGNOSTICS_TEST = True` to collect Wi-Fi metrics using `wdutil`. The command runs with `sudo -n`, so it fails fast instead of prompting if passwordless sudo is not configured.
 
@@ -91,7 +94,7 @@ If you choose to allow passwordless use, edit sudoers only with `sudo visudo`:
 your_username ALL=(ALL) NOPASSWD: /usr/bin/wdutil
 ```
 
-### LAN Bufferbloat
+### LAN bufferbloat
 
 Set `RUN_LAN_BUFFERBLOAT_TEST = True` only when a second machine on your LAN is running `iperf3 -s`.
 
@@ -102,7 +105,7 @@ iperf3 -s
 
 Then set `LAN_TEST_TARGET_IP` in [config.py](config.py) to that machine's LAN IP.
 
-### Debug Toggles
+### Debug toggles
 
 - `LOG_RAW_GATEWAY_OUTPUT`: append raw gateway ping output to `gateway_raw_output.log`.
 - `CLEANUP_STALE_CHROMEDRIVER_PROCESSES`: best-effort cleanup for stale ChromeDriver processes. This can terminate unrelated ChromeDriver sessions.
@@ -120,7 +123,7 @@ uv run ty check
 uv run pytest -q
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the small-project contribution workflow.
+See [CONTRIBUTING.md](CONTRIBUTING.md) before sending a change.
 
 ## License
 
